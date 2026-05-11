@@ -35,7 +35,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from src.engine.kv_cache import SimpleKVCache
+    from src.engine.kv_cache import PagedRequestCache
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ class MultiHeadAttention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        kv_cache: "SimpleKVCache | list[SimpleKVCache] | None" = None,
+        kv_cache: "PagedRequestCache | list[PagedRequestCache] | None" = None,
         layer_idx: int | None = None,
     ) -> torch.Tensor:
         """
@@ -252,24 +252,15 @@ class MultiHeadAttention(nn.Module):
             x: (B, S, H) -- already RMSNorm'd by the caller.
             kv_cache: one of:
                 * None: no cache, recompute everything (the Day 2-4 path).
-                * SimpleKVCache: single-request prefill or decode.
-                * list[SimpleKVCache]: BATCHED DECODE across B requests, each
-                    with its own cache. S must be 1; each cache is at its
-                    own current seq_len. Continuous-batching entry point.
+                * PagedRequestCache: single request, prefill or decode.
+                * list[PagedRequestCache]: BATCHED DECODE across B requests, each
+                    with its own cache. S must be 1. Each cache is at a
+                    different point in its own sequence, so RoPE is per-row.
             layer_idx: which layer slot in the cache to use. Required when
                 kv_cache is not None.
 
         Returns:
             (B, S, H) -- to be added to the residual stream by the caller.
-
-        Two modes for a single cache:
-            * Prefill: kv_cache is None (no caching at all) OR kv_cache is
-              empty for this layer. S is typically > 1. Standard causal SDPA.
-              If a cache was provided, we APPEND the freshly-rotated K/V.
-            * Decode: kv_cache is non-empty for this layer. S is typically 1.
-              We compute Q/K/V for the new token only, append K/V to the
-              cache, then attend the new Q against the FULL cached K/V.
-              No causal mask -- the new query naturally sees the full past.
         """
         # Dispatch to the batched-decode path when caller passes a list of
         # per-request caches. This is the Day 6 continuous-batching entry.
@@ -386,14 +377,14 @@ class MultiHeadAttention(nn.Module):
     def _forward_decode_batched(
         self,
         x: torch.Tensor,
-        caches: list["SimpleKVCache"],
+        caches: list["PagedRequestCache"],
         layer_idx: int,
     ) -> torch.Tensor:
         """Batched-decode forward across B per-request caches.
 
         Args:
             x: (B, 1, H) -- one new token per request, RMSNorm'd by caller.
-            caches: list of length B, each a SimpleKVCache for one request.
+            caches: list of length B, each a PagedRequestCache for one request.
                 Each cache may have a DIFFERENT seq_len at entry.
             layer_idx: required.
 

@@ -28,7 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.engine.attention import MultiHeadAttention
-from src.engine.kv_cache import SimpleKVCache
+from src.engine.kv_cache import PagedKVCache, PagedRequestCache
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        kv_cache: "SimpleKVCache | list[SimpleKVCache] | None" = None,
+        kv_cache: "PagedRequestCache | list[PagedRequestCache] | None" = None,
         layer_idx: int | None = None,
     ) -> torch.Tensor:
         # Sublayer 1: attention. The cache lives inside attention; we just
@@ -306,7 +306,7 @@ class LlamaModel(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        kv_cache: SimpleKVCache | list[SimpleKVCache] | None = None,
+        kv_cache: PagedRequestCache | list[PagedRequestCache] | None = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -314,8 +314,8 @@ class LlamaModel(nn.Module):
                 cached decode step S = 1.
             kv_cache: one of:
                 * None: no cache, recompute everything.
-                * SimpleKVCache: single-request prefill or decode.
-                * list[SimpleKVCache]: batched decode across B requests,
+                * PagedRequestCache: single-request prefill or decode.
+                * list[PagedRequestCache]: batched decode across B requests,
                     each with its own cache. S must be 1; each cache is at
                     its own current seq_len. Attention dispatches.
 
@@ -381,6 +381,40 @@ class LlamaModel(nn.Module):
             return self._generate_cached(input_ids, max_new_tokens, eos_token_id)
         return self._generate_naive(input_ids, max_new_tokens, eos_token_id)
 
+    def _make_single_request_cache(
+        self,
+        prompt_len: int,
+        max_new_tokens: int,
+        block_size: int = 16,
+    ) -> PagedRequestCache:
+        """Build a paged pool sized for ONE request + return its view.
+
+        Used by `_generate_cached` so that solo generation goes through
+        the same paged-cache code as the scheduler. The pool is sized to
+        the request's worst-case footprint (prompt + max_new_tokens).
+        """
+        config = self.config
+        head_dim = config.hidden_size // config.num_attention_heads
+        n_blocks = (prompt_len + max_new_tokens + block_size - 1) // block_size
+        n_prefill = (prompt_len + block_size - 1) // block_size
+        dtype = next(self.parameters()).dtype
+        device = next(self.parameters()).device
+        pool = PagedKVCache(
+            num_layers=config.num_hidden_layers,
+            num_blocks=n_blocks,
+            block_size=block_size,
+            num_kv_heads=config.num_key_value_heads,
+            head_dim=head_dim,
+            dtype=dtype,
+            device=device,
+        )
+        pool.admit_request(
+            request_id="solo",
+            prefill_blocks_needed=n_prefill,
+            total_blocks_needed=n_blocks,
+        )
+        return PagedRequestCache(pool, "solo", num_layers=config.num_hidden_layers)
+
     def _generate_naive(
         self,
         input_ids: torch.Tensor,
@@ -404,7 +438,7 @@ class LlamaModel(nn.Module):
         max_new_tokens: int,
         eos_token_id: int | None,
     ) -> torch.Tensor:
-        """O(N) cached decode.
+        """O(N) cached decode using a paged KV cache.
 
         Two distinct phases:
           1. PREFILL: forward the entire prompt once. The cache absorbs
@@ -418,8 +452,17 @@ class LlamaModel(nn.Module):
         Both phases call the same forward(). The only difference is the
         input length and the cache's current seq_len, which together
         determine RoPE's position offset and the causal-mask flip.
+
+        For solo generation we build a tiny one-request paged pool sized
+        to the worst-case footprint of THIS request. The pool/request-view
+        split is overkill for a single request, but using it here means we
+        exercise exactly the same code path the scheduler does, so any
+        paged-cache bug surfaces in both places.
         """
-        cache = SimpleKVCache(num_layers=self.config.num_hidden_layers)
+        cache = self._make_single_request_cache(
+            prompt_len=input_ids.shape[1],
+            max_new_tokens=max_new_tokens,
+        )
 
         # ---- Phase 1: prefill ----
         # Feed the prompt. After this, the cache holds K/V for positions

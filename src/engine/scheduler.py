@@ -20,20 +20,23 @@ What problem this solves:
   Batch composition is fluid across steps; throughput stays high under
   diverse request lengths.
 
-Day 6 simplification: mixed prefill + decode batching.
+Day 7 addition: paged KV cache + admission control.
 
-  A real production scheduler decides per-step whether to do prefill, decode,
-  or a mixed-shape forward. Mixing prefill (large q_len) and decode (q_len=1)
-  in one forward pass needs an attention kernel that handles variable q_len
-  per row, which is non-trivial without paged attention (Day 7).
+  The scheduler owns a PagedKVCache pool of fixed total capacity. A request
+  cannot be admitted unless the pool has enough free blocks for its
+  worst-case footprint (prompt + max_new_tokens). Requests stuck behind
+  insufficient capacity stay in the waiting queue until other requests
+  finish and return their blocks.
 
-  Our compromise here: prefill requests are processed sequentially -- one
-  forward pass per prefill request -- and the decode requests are batched
-  into ONE forward pass. So per step we do (n_prefill + 1) forward passes
-  instead of 1. This is correct, simple, and still pays the speedup off
-  the batched decode (which is the steady state once requests pile up).
+  This is the production-grade admission story: under load, requests
+  queue rather than thrash memory.
 
-Day 7 will replace SimpleKVCache here with a paged pool + admission control.
+Day 6 simplification still in force: mixed prefill + decode batching.
+
+  Prefill requests are processed sequentially -- one forward pass per
+  prefill -- and the decode requests are batched into ONE forward pass.
+  Per step we do (n_prefill + 1) forward passes instead of 1. Steady
+  state most steps are decode-only and run one forward pass.
 
 Public surface:
 
@@ -50,7 +53,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from src.engine.kv_cache import SimpleKVCache
+from src.engine.kv_cache import PagedKVCache, PagedRequestCache
 
 if TYPE_CHECKING:
     from src.engine.model import LlamaModel
@@ -63,7 +66,7 @@ class RequestStatus(Enum):
     """Where a request is in its lifecycle.
 
     Transitions:
-        WAITING --admit (batch has room)--> PREFILL
+        WAITING --admit (capacity AND block budget)--> PREFILL
         PREFILL --run prefill, emit 1 token--> DECODE (or DONE if EOS / cap)
         DECODE  --decode step, emit 1 token--> DECODE (loops)
         DECODE  --EOS or cap--> DONE
@@ -84,7 +87,7 @@ class Request:
 
     status: RequestStatus = RequestStatus.WAITING
     generated_token_ids: list[int] = field(default_factory=list)
-    cache: SimpleKVCache | None = None      # allocated at admission
+    cache: PagedRequestCache | None = None      # allocated at admission
 
     @property
     def last_token_id(self) -> int:
@@ -104,19 +107,48 @@ class Request:
 
 
 class ContinuousBatchScheduler:
-    def __init__(self, model: "LlamaModel", max_batch_size: int) -> None:
+    def __init__(
+        self,
+        model: "LlamaModel",
+        max_batch_size: int,
+        num_blocks: int,
+        block_size: int = 16,
+    ) -> None:
         """
         Args:
             model: the LlamaModel.
             max_batch_size: max concurrent requests in the active batch.
                 This is the COMPUTE budget (rows in one forward pass).
+            num_blocks: total physical blocks in the paged KV pool.
+                This is the MEMORY budget. Each block holds `block_size`
+                tokens of K and V at every layer.
+            block_size: tokens per block. 16 matches vLLM's default and
+                is a good fit for typical prompt + decode lengths.
 
-        Day 6: only compute budget. Day 7 adds a memory budget on top
-        (paged KV pool with explicit admission control).
+        Two independent budgets:
+            * max_batch_size: how many requests can run in one forward pass.
+            * num_blocks: how much total cache space the engine has.
+        A request might pass the batch check but fail the block check and
+        stay queued; vice versa.
         """
         self.model = model
         self.num_layers = model.config.num_hidden_layers
         self.max_batch_size = max_batch_size
+        self.block_size = block_size
+
+        # The KV pool. One big tensor shared across all requests.
+        head_dim = model.config.hidden_size // model.config.num_attention_heads
+        dtype = next(model.parameters()).dtype
+        device = next(model.parameters()).device
+        self.pool = PagedKVCache(
+            num_layers=self.num_layers,
+            num_blocks=num_blocks,
+            block_size=block_size,
+            num_kv_heads=model.config.num_key_value_heads,
+            head_dim=head_dim,
+            dtype=dtype,
+            device=device,
+        )
 
         self.waiting: deque[Request] = deque()
         self.active: list[Request] = []
@@ -132,7 +164,8 @@ class ContinuousBatchScheduler:
         eos_token_id: int | None = None,
     ) -> None:
         """Enqueue a new request. Admission happens at the next step() if
-        the batch has room."""
+        BOTH the batch has room AND the pool has enough free blocks for
+        this request's worst-case footprint."""
         if prompt_ids.dim() != 2 or prompt_ids.shape[0] != 1:
             raise ValueError(
                 f"prompt_ids must be shape (1, S); got {tuple(prompt_ids.shape)}"
@@ -152,25 +185,63 @@ class ContinuousBatchScheduler:
         self.finished = []
         return out
 
+    # ---- Internals ----------------------------------------------------
+
+    def _blocks_needed(self, r: Request) -> tuple[int, int]:
+        """How many blocks does a request need?
+
+        Returns:
+            (prefill_blocks, total_blocks). prefill_blocks is what we
+            allocate immediately at admission; total_blocks is the
+            worst-case lifetime footprint and is what admission control
+            checks against the free pool.
+        """
+        bs = self.block_size
+        prompt_len = r.prompt_ids.shape[1]
+        prefill = (prompt_len + bs - 1) // bs
+        total = (prompt_len + r.max_new_tokens + bs - 1) // bs
+        return prefill, total
+
     # ---- Core loop ----------------------------------------------------
 
     def step(self) -> list[tuple[str, int]]:
         """One engine iteration. Returns every token emitted this step.
 
         Phases:
-          1. Admission: WAITING -> PREFILL while batch has room.
+          1. Admission: WAITING -> PREFILL while batch and pool have room.
           2. Prefill:   one forward pass per PREFILL request.
           3. Decode:    one batched forward pass over all DECODE requests.
-          4. Eviction:  drop finished requests from the active list.
+          4. Eviction:  return finished requests' blocks to the pool.
         """
         emitted: list[tuple[str, int]] = []
 
         # --- 1. Admission --------------------------------------------------
-        # Promote waiting requests into the active batch until we hit the
-        # compute budget. FIFO order -- first request queued is first admitted.
-        while self.waiting and len(self.active) < self.max_batch_size:
-            r = self.waiting.popleft()
-            r.cache = SimpleKVCache(num_layers=self.num_layers)
+        # Promote requests one at a time, checking BOTH constraints:
+        # batch size and pool capacity. We scan the waiting queue from
+        # the front; if a request doesn't fit, we don't skip it (FIFO
+        # fairness -- avoid starvation of large requests behind small ones).
+        # Real schedulers do more sophisticated bin packing here.
+        while (
+            self.waiting
+            and len(self.active) < self.max_batch_size
+        ):
+            r = self.waiting[0]
+            prefill_blocks, total_blocks = self._blocks_needed(r)
+            if not self.pool.can_admit(total_blocks):
+                # Not enough memory right now; wait until something frees up.
+                break
+
+            self.waiting.popleft()
+            self.pool.admit_request(
+                request_id=r.request_id,
+                prefill_blocks_needed=prefill_blocks,
+                total_blocks_needed=total_blocks,
+            )
+            r.cache = PagedRequestCache(
+                pool=self.pool,
+                request_id=r.request_id,
+                num_layers=self.num_layers,
+            )
             r.status = RequestStatus.PREFILL
             self.active.append(r)
 
@@ -203,12 +274,12 @@ class ContinuousBatchScheduler:
                     r.status = RequestStatus.DONE
 
         # --- 4. Eviction --------------------------------------------------
-        # Drop done requests from the active list. They keep their cache
-        # objects (just for the finished bucket); GC reclaims when the
-        # scheduler hands them back via get_finished().
+        # Done requests release their blocks to the pool. This is what lets
+        # waiting requests get admitted on a future step.
         still_active: list[Request] = []
         for r in self.active:
             if r.status is RequestStatus.DONE:
+                self.pool.free_request(r.request_id)
                 self.finished.append(r)
             else:
                 still_active.append(r)

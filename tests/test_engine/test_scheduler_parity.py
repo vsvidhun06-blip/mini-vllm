@@ -86,7 +86,10 @@ def test_scheduler_matches_solo(model_and_tokenizer) -> None:
     solo_time = time.perf_counter() - t0
 
     # ---- Batched run via scheduler ----------------------------------------
-    scheduler = ContinuousBatchScheduler(model, max_batch_size=4)
+    # num_blocks=64 is comfortable headroom for these 4 short prompts (each
+    # needs ~2 blocks at block_size=16, so 8 total suffices); the parity
+    # path is not the place to exercise admission control.
+    scheduler = ContinuousBatchScheduler(model, max_batch_size=4, num_blocks=64)
     for i, prompt_ids in enumerate(prompt_ids_list):
         scheduler.add_request(
             request_id=f"req-{i}",
