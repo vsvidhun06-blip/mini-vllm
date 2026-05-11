@@ -66,7 +66,14 @@ Two classes in this module:
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
+
+from src.engine import events
+
+if TYPE_CHECKING:
+    from src.engine.events import EventBus
 
 
 class PagedKVCache:
@@ -86,12 +93,17 @@ class PagedKVCache:
         head_dim: int,
         dtype: torch.dtype = torch.float32,
         device: torch.device | str = "cpu",
+        event_bus: "EventBus | None" = None,
     ) -> None:
         self.num_layers = num_layers
         self.num_blocks = num_blocks
         self.block_size = block_size
         self.num_kv_heads = num_kv_heads
         self.head_dim = head_dim
+        # Optional event sink. When None, all the emit() calls below
+        # short-circuit. Engine tests run without a bus and see no behavior
+        # change.
+        self.event_bus = event_bus
 
         # The big pool tensors. See module header for layout rationale.
         shape = (num_layers, num_blocks, block_size, num_kv_heads, head_dim)
@@ -150,8 +162,19 @@ class PagedKVCache:
                 f"{total_blocks_needed} blocks, {self.num_free_blocks()} free."
             )
 
-        # Physically allocate the prefill blocks.
-        allocated = [self._free_blocks.pop() for _ in range(prefill_blocks_needed)]
+        # Physically allocate the prefill blocks. Emit one block_allocated
+        # event per block so the visualiser can draw the prefill footprint
+        # block-by-block, matching how decode-time allocations arrive.
+        allocated: list[int] = []
+        for logical_idx in range(prefill_blocks_needed):
+            phys = self._free_blocks.pop()
+            allocated.append(phys)
+            if self.event_bus is not None:
+                self.event_bus.emit(events.block_allocated(
+                    request_id=request_id,
+                    physical_block_idx=phys,
+                    logical_idx=logical_idx,
+                ))
         self._blocks[request_id] = allocated
         # Reserve the remainder.
         self._reserved[request_id] = total_blocks_needed - prefill_blocks_needed
@@ -173,12 +196,24 @@ class PagedKVCache:
         b = self._free_blocks.pop()
         self._blocks[request_id].append(b)
         self._reserved[request_id] -= 1
+        if self.event_bus is not None:
+            self.event_bus.emit(events.block_allocated(
+                request_id=request_id,
+                physical_block_idx=b,
+                # logical_idx is len-1 because we just appended.
+                logical_idx=len(self._blocks[request_id]) - 1,
+            ))
         return b
 
     def free_request(self, request_id: str) -> None:
         """Return all of a request's blocks (allocated + reserved) to the pool."""
         for b in self._blocks.pop(request_id, []):
             self._free_blocks.add(b)
+            if self.event_bus is not None:
+                self.event_bus.emit(events.block_freed(
+                    request_id=request_id,
+                    physical_block_idx=b,
+                ))
         # Clearing the reservation gives the unused budget back to other
         # admissions.
         self._reserved.pop(request_id, None)

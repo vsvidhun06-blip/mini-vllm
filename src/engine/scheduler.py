@@ -49,13 +49,15 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import torch
 
+from src.engine import events
 from src.engine.kv_cache import PagedKVCache, PagedRequestCache
 
 if TYPE_CHECKING:
+    from src.engine.events import EventBus
     from src.engine.model import LlamaModel
 
 
@@ -84,6 +86,10 @@ class Request:
     prompt_ids: torch.Tensor    # (1, S_prompt) int64
     max_new_tokens: int
     eos_token_id: int | None
+    # Prompt text is carried only so the request_admitted event can echo
+    # it back to the visualiser. The model never sees it; tokenisation
+    # happened before we got here. None when the caller didn't supply it.
+    prompt_text: str | None = None
 
     status: RequestStatus = RequestStatus.WAITING
     generated_token_ids: list[int] = field(default_factory=list)
@@ -113,6 +119,8 @@ class ContinuousBatchScheduler:
         max_batch_size: int,
         num_blocks: int,
         block_size: int = 16,
+        event_bus: "EventBus | None" = None,
+        token_decoder: Callable[[int], str] | None = None,
     ) -> None:
         """
         Args:
@@ -124,6 +132,16 @@ class ContinuousBatchScheduler:
                 tokens of K and V at every layer.
             block_size: tokens per block. 16 matches vLLM's default and
                 is a good fit for typical prompt + decode lengths.
+            event_bus: optional. When provided, the scheduler emits
+                structured events at every state transition (admission,
+                prefill, decode, eviction) and forwards it to the KV pool
+                so block_allocated / block_freed also surface. When None
+                the scheduler is silent and existing engine tests run
+                byte-identically.
+            token_decoder: optional callable `(token_id) -> token_str`.
+                Only used for the decode_step event's human-readable
+                token text. None means the event omits the string and
+                the consumer can decode on its own.
 
         Two independent budgets:
             * max_batch_size: how many requests can run in one forward pass.
@@ -135,8 +153,12 @@ class ContinuousBatchScheduler:
         self.num_layers = model.config.num_hidden_layers
         self.max_batch_size = max_batch_size
         self.block_size = block_size
+        self.event_bus = event_bus
+        self.token_decoder = token_decoder
 
-        # The KV pool. One big tensor shared across all requests.
+        # The KV pool. One big tensor shared across all requests. The pool
+        # also gets the event_bus so block_allocated / block_freed fire
+        # at the source without us having to introspect.
         head_dim = model.config.hidden_size // model.config.num_attention_heads
         dtype = next(model.parameters()).dtype
         device = next(model.parameters()).device
@@ -148,11 +170,31 @@ class ContinuousBatchScheduler:
             head_dim=head_dim,
             dtype=dtype,
             device=device,
+            event_bus=event_bus,
         )
 
         self.waiting: deque[Request] = deque()
         self.active: list[Request] = []
         self.finished: list[Request] = []
+        # Monotonic step counter. Exposed via the decode_step event so the
+        # visualiser can align decode bursts to a timeline.
+        self._step_idx: int = 0
+
+    # ---- Helpers (event emission lives here so the core loop stays clean) ----
+
+    def _emit(self, event: events.Event) -> None:
+        """Fire an event if a bus is attached; otherwise no-op."""
+        if self.event_bus is not None:
+            self.event_bus.emit(event)
+
+    def _decode_token_str(self, token_id: int) -> str:
+        """Resolve a token id to display text. Empty string if no decoder."""
+        if self.token_decoder is None:
+            return ""
+        try:
+            return self.token_decoder(token_id)
+        except Exception:
+            return ""
 
     # ---- Public API ---------------------------------------------------
 
@@ -162,10 +204,15 @@ class ContinuousBatchScheduler:
         prompt_ids: torch.Tensor,
         max_new_tokens: int,
         eos_token_id: int | None = None,
+        prompt_text: str | None = None,
     ) -> None:
         """Enqueue a new request. Admission happens at the next step() if
         BOTH the batch has room AND the pool has enough free blocks for
-        this request's worst-case footprint."""
+        this request's worst-case footprint.
+
+        prompt_text is optional and only used by the request_admitted
+        event payload for visualiser display.
+        """
         if prompt_ids.dim() != 2 or prompt_ids.shape[0] != 1:
             raise ValueError(
                 f"prompt_ids must be shape (1, S); got {tuple(prompt_ids.shape)}"
@@ -175,6 +222,7 @@ class ContinuousBatchScheduler:
             prompt_ids=prompt_ids,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
+            prompt_text=prompt_text,
         ))
 
     def has_work(self) -> bool:
@@ -212,8 +260,11 @@ class ContinuousBatchScheduler:
           2. Prefill:   one forward pass per PREFILL request.
           3. Decode:    one batched forward pass over all DECODE requests.
           4. Eviction:  return finished requests' blocks to the pool.
+          5. Pool state event: emit a snapshot so the visualiser can paint
+             the memory bar after every step.
         """
         emitted: list[tuple[str, int]] = []
+        self._step_idx += 1
 
         # --- 1. Admission --------------------------------------------------
         # Promote requests one at a time, checking BOTH constraints:
@@ -228,7 +279,15 @@ class ContinuousBatchScheduler:
             r = self.waiting[0]
             prefill_blocks, total_blocks = self._blocks_needed(r)
             if not self.pool.can_admit(total_blocks):
-                # Not enough memory right now; wait until something frees up.
+                # Not enough memory right now; surface why and stop scanning.
+                # FIFO means we don't try later items in the queue this step.
+                self._emit(events.request_waiting(
+                    request_id=r.request_id,
+                    reason=(
+                        f"no free blocks: need {total_blocks}, "
+                        f"{self.pool.num_free_blocks()} available"
+                    ),
+                ))
                 break
 
             self.waiting.popleft()
@@ -244,15 +303,31 @@ class ContinuousBatchScheduler:
             )
             r.status = RequestStatus.PREFILL
             self.active.append(r)
+            self._emit(events.request_admitted(
+                request_id=r.request_id,
+                prompt=r.prompt_text or "",
+                prompt_len=int(r.prompt_ids.shape[1]),
+            ))
 
         # --- 2. Prefill ----------------------------------------------------
         prefill_reqs = [r for r in self.active if r.status is RequestStatus.PREFILL]
         for r in prefill_reqs:
+            prompt_len = int(r.prompt_ids.shape[1])
+            self._emit(events.prefill_started(
+                request_id=r.request_id,
+                num_tokens=prompt_len,
+            ))
             with torch.no_grad():
                 logits = self.model(r.prompt_ids, kv_cache=r.cache)  # (1, S_prompt, V)
             next_id = int(torch.argmax(logits[0, -1, :]))
             r.generated_token_ids.append(next_id)
             emitted.append((r.request_id, next_id))
+            self._emit(events.prefill_done(
+                request_id=r.request_id,
+                # All prefill blocks are physically allocated at admit-time;
+                # the block table length is the count.
+                blocks_allocated=len(self.pool.get_block_table(r.request_id)),
+            ))
             r.status = RequestStatus.DONE if r.is_finished() else RequestStatus.DECODE
 
         # --- 3. Decode (batched) ------------------------------------------
@@ -266,12 +341,22 @@ class ContinuousBatchScheduler:
             with torch.no_grad():
                 logits = self.model(input_ids, kv_cache=caches)  # (B, 1, V)
 
+            # Collect the per-row results first so we can emit ONE
+            # decode_step event covering the whole batch.
+            batch_for_event: list[tuple[str, int, str]] = []
             for i, r in enumerate(decode_reqs):
                 next_id = int(torch.argmax(logits[i, -1, :]))
                 r.generated_token_ids.append(next_id)
                 emitted.append((r.request_id, next_id))
+                batch_for_event.append((
+                    r.request_id, next_id, self._decode_token_str(next_id),
+                ))
                 if r.is_finished():
                     r.status = RequestStatus.DONE
+            self._emit(events.decode_step(
+                step_idx=self._step_idx,
+                batch=batch_for_event,
+            ))
 
         # --- 4. Eviction --------------------------------------------------
         # Done requests release their blocks to the pool. This is what lets
@@ -279,10 +364,33 @@ class ContinuousBatchScheduler:
         still_active: list[Request] = []
         for r in self.active:
             if r.status is RequestStatus.DONE:
+                # Capture stats BEFORE free_request clears the block table.
+                total_tokens = len(r.generated_token_ids)
+                reason = "eos" if (
+                    r.eos_token_id is not None
+                    and total_tokens > 0
+                    and r.generated_token_ids[-1] == r.eos_token_id
+                ) else "max_new_tokens"
                 self.pool.free_request(r.request_id)
                 self.finished.append(r)
+                self._emit(events.request_finished(
+                    request_id=r.request_id,
+                    reason=reason,
+                    total_tokens=total_tokens,
+                    total_steps=self._step_idx,
+                ))
             else:
                 still_active.append(r)
         self.active = still_active
+
+        # --- 5. Pool state snapshot ---------------------------------------
+        # One event per step, AFTER eviction has freed blocks. The
+        # visualiser polls this for the memory bar.
+        free = len(self.pool._free_blocks)  # noqa: SLF001 -- friendly access
+        self._emit(events.pool_state(
+            free_blocks=free,
+            used_blocks=self.pool.num_blocks - free,
+            total_blocks=self.pool.num_blocks,
+        ))
 
         return emitted
