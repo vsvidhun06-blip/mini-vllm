@@ -14,3 +14,6 @@
 
 # so I understand what I am committing.
 
+#Never add Co-Authored-By trailers to commit messages. All commits 
+  must show me (the user) as sole author.
+
