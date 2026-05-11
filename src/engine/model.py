@@ -315,6 +315,77 @@ class LlamaModel(nn.Module):
         logits = self.lm_head(x)
         return logits
 
+    # -----------------------------------------------------------------------
+    # Autoregressive greedy generation (Day 4: no KV cache yet)
+    # -----------------------------------------------------------------------
+    #
+    # The naive approach: at each step, re-run the *entire* prompt + all
+    # previously generated tokens through the model. This is O(N^2) total
+    # work for N generated tokens, because position t recomputes attention
+    # over positions 0..t-1 every time.
+    #
+    # Why do it the naive way first?
+    #   1. It is identical to the parity-tested forward pass, so any drift
+    #      between us and HF can only come from generation logic, not from
+    #      the model itself. That's a clean baseline before adding caching.
+    #   2. The KV-cache version (Day 5) will be a strict optimization with
+    #      the same outputs. Having the naive reference makes that diff
+    #      testable.
+    #
+    # Greedy decoding: at each step pick argmax over the vocab. This is
+    # deterministic -- no temperature, no sampling. Equivalent to HF's
+    # `generate(do_sample=False, num_beams=1)`.
+    # -----------------------------------------------------------------------
+
+    @torch.no_grad()
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int,
+        eos_token_id: int | None = None,
+    ) -> torch.Tensor:
+        """Greedy autoregressive generation, no KV cache.
+
+        Args:
+            input_ids: (B, S_prompt) int64. The prompt tokens.
+            max_new_tokens: hard cap on tokens generated. We stop here even
+                if EOS hasn't been hit.
+            eos_token_id: if provided, we stop early when EVERY sequence
+                in the batch has just emitted this id. Set to None to
+                always run the full max_new_tokens budget.
+
+        Returns:
+            (B, S_prompt + n_generated) int64. The full sequence: the
+            original prompt followed by every generated token. Matches
+            HF's `generate()` return convention.
+        """
+        # `generated` is the running sequence we feed back into the model.
+        # We rebuild it from scratch each step rather than maintaining state.
+        generated = input_ids
+
+        for _ in range(max_new_tokens):
+            # Full forward pass over the WHOLE current sequence.
+            # logits: (B, S_current, vocab)
+            logits = self(generated)
+
+            # Greedy: argmax over the vocab at the LAST position.
+            # That position's logits are the model's "what comes next?"
+            # prediction. Earlier positions predict already-known tokens.
+            # next_token: (B, 1)
+            next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+
+            # Append. cat along seq dim grows our running sequence by one.
+            generated = torch.cat([generated, next_token], dim=1)
+
+            # Early stop. Stops only when EVERY batch row hit EOS at this
+            # step -- a single row hitting EOS while others haven't would
+            # require per-row masking, which we skip here (batch=1 is the
+            # interesting case for now).
+            if eos_token_id is not None and (next_token == eos_token_id).all():
+                break
+
+        return generated
+
 
 # ---------------------------------------------------------------------------
 # Weight loading from a Hugging Face checkpoint
@@ -464,19 +535,21 @@ def main() -> None:
     model, _config = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
 
     prompt = "The capital of France is"
-    inputs = tokenizer(prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"]
+    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
 
-    with torch.no_grad():
-        logits = model(input_ids)  # (1, S, vocab)
+    # Greedy generation: 20 new tokens, stop early on EOS.
+    output_ids = model.generate(
+        input_ids,
+        max_new_tokens=20,
+        eos_token_id=tokenizer.eos_token_id,
+    )
 
-    # Last position == prediction for what comes next.
-    next_token_logits = logits[0, -1, :]
-    next_token_id = int(torch.argmax(next_token_logits))
-    next_token = tokenizer.decode([next_token_id])
+    # output_ids includes the prompt; decode the whole thing so the user
+    # can read prompt + completion as one continuous string.
+    output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
     print(f"Prompt: {prompt}")
-    print(f"Next token: {next_token}")
+    print(f"Output: {output_text}")
 
 
 if __name__ == "__main__":
