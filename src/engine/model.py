@@ -1,0 +1,483 @@
+"""
+TinyLlama-1.1B forward pass, implemented from scratch in PyTorch.
+
+What this file owns:
+
+  * RMSNorm                   -- the LLaMA-family normalization layer.
+  * SwiGLUMLP                 -- the gated feed-forward block.
+  * TransformerBlock          -- pre-norm + attention + pre-norm + MLP,
+                                 with two residual adds.
+  * LlamaModel                -- token embedding, 22 blocks, final norm,
+                                 LM head. The whole forward pass top to
+                                 bottom.
+  * load_tinyllama_from_hf    -- download the HF safetensors checkpoint,
+                                 map its parameter names to ours, and load.
+  * main()                    -- Day 2 entry point: load the model, run a
+                                 prompt, print the greedy next token.
+
+Heavily commented because I am going to read this code and defend the
+architecture decisions in interviews. See `attention.py` for RoPE and GQA.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from src.engine.attention import MultiHeadAttention
+
+
+# ---------------------------------------------------------------------------
+# RMSNorm
+# ---------------------------------------------------------------------------
+#
+# Why RMSNorm instead of LayerNorm?
+#
+#   LayerNorm does two things to each token vector x:
+#       1. Recenter:  x' = x - mean(x)
+#       2. Rescale:   x'' = x' / std(x')
+#       3. Affine:    out = gamma * x'' + beta
+#
+#   RMSNorm drops steps 1 and the bias in step 3:
+#       1. Rescale:   x' = x / sqrt(mean(x^2) + eps)
+#       2. Affine:    out = gamma * x'        (no beta)
+#
+#   The RMSNorm paper's claim: the recentering step doesn't actually
+#   contribute to model quality -- only the rescaling does. Empirically
+#   they're right. RMSNorm is faster (one less reduction over the dim),
+#   has fewer parameters (no beta), and matches or beats LayerNorm.
+#
+#   Every LLaMA-family model uses RMSNorm.
+#
+# Why compute in fp32 even when the model runs in lower precision?
+#
+#   `mean(x^2)` sums D squared activations. In fp16 the sum can overflow
+#   for big activations, or underflow for small ones, both of which corrupt
+#   the normalization scale. HF computes RMSNorm in fp32 unconditionally
+#   and casts back to the input dtype at the end. We match that exactly --
+#   subtle parity bug otherwise.
+# ---------------------------------------------------------------------------
+
+
+class RMSNorm(nn.Module):
+    def __init__(self, hidden_size: int, eps: float = 1e-5) -> None:
+        super().__init__()
+        # The "gamma" rescaling factor, initialized to ones. One scalar per
+        # hidden dim. After training these encode "how much should each
+        # feature dim contribute downstream".
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        # Promote to fp32 for the variance + rsqrt to avoid precision loss.
+        x_fp32 = x.to(torch.float32)
+        # Mean of squares along the last (feature) dim, keep that dim so
+        # broadcasting against x works.
+        variance = x_fp32.pow(2).mean(dim=-1, keepdim=True)
+        # rsqrt(v + eps) is the reciprocal of the RMS. Multiplying by it
+        # rescales each row so its RMS becomes 1.
+        x_normed = x_fp32 * torch.rsqrt(variance + self.eps)
+        # Cast back to whatever dtype the caller is using, THEN apply the
+        # learned gamma. The cast-then-multiply order matches HF.
+        return (self.weight * x_normed.to(input_dtype))
+
+
+# ---------------------------------------------------------------------------
+# SwiGLU MLP
+# ---------------------------------------------------------------------------
+#
+# Why SwiGLU instead of GELU-MLP?
+#
+#   A vanilla transformer MLP is:
+#       h = activation(x @ W_in) @ W_out   -- two matrices.
+#
+#   SwiGLU is:
+#       h = (silu(x @ W_gate) * (x @ W_up)) @ W_down
+#       silu(x) = x * sigmoid(x)
+#
+#   Three matrices instead of two. The `silu(gate) * up` part is a "gated
+#   linear unit": one projection's output is used to elementwise-gate
+#   another projection. Intuition: the gate decides feature-by-feature how
+#   much of `up` to let through, giving the MLP a kind of dynamic, input-
+#   dependent on/off switch.
+#
+#   GLU variants beat plain MLPs at the same compute budget in practice
+#   (see Shazeer 2020, "GLU Variants Improve Transformer"). SwiGLU costs
+#   1.5x more parameters at the same intermediate_size, so LLaMA models
+#   compensate by shrinking intermediate_size. TinyLlama uses 5632 (about
+#   2.75x hidden) instead of the GPT-classic 4x.
+# ---------------------------------------------------------------------------
+
+
+class SwiGLUMLP(nn.Module):
+    def __init__(self, hidden_size: int, intermediate_size: int) -> None:
+        super().__init__()
+        # All three projections are bias-less, matching LLaMA.
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.up_proj   = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # gate and up share the same input x. silu(gate) is the "switch",
+        # up is the "value", elementwise product gates the value.
+        return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
+
+
+# ---------------------------------------------------------------------------
+# Transformer block (one decoder layer)
+# ---------------------------------------------------------------------------
+#
+# Pre-norm vs post-norm:
+#
+#   Original "Attention Is All You Need" used POST-norm: sublayer first,
+#   then add residual, then norm. That training is unstable at depth --
+#   gradients have to backprop through every LayerNorm to reach earlier
+#   layers, so signals fade out.
+#
+#   PRE-norm puts the norm INSIDE each sublayer call:
+#       x = x + sublayer(norm(x))
+#   Now the residual stream `x` flows uninterrupted from input to output
+#   with nothing scaling or shifting it. Training is stable at hundreds
+#   of layers. Every modern LLM uses pre-norm.
+#
+# Two sublayers, two residual adds:
+#   1. Attention sublayer:   x += Attn(RMSNorm(x))
+#   2. MLP sublayer:         x += MLP(RMSNorm(x))
+#
+# Note: the two RMSNorms are separate parameters. HF calls them
+# `input_layernorm` and `post_attention_layernorm` -- the names are
+# legacy from when LLaMA was first written using LayerNorm naming.
+# ---------------------------------------------------------------------------
+
+
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        num_heads: int,
+        num_kv_heads: int,
+        max_seq_len: int,
+        rope_base: float,
+        rms_eps: float,
+    ) -> None:
+        super().__init__()
+        self.attn_norm = RMSNorm(hidden_size, eps=rms_eps)
+        self.attn = MultiHeadAttention(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            max_seq_len=max_seq_len,
+            rope_base=rope_base,
+        )
+        self.mlp_norm = RMSNorm(hidden_size, eps=rms_eps)
+        self.mlp = SwiGLUMLP(hidden_size, intermediate_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Sublayer 1: attention. The residual `x` is preserved; only the
+        # *delta* from attention is added back.
+        x = x + self.attn(self.attn_norm(x))
+        # Sublayer 2: MLP. Same pattern.
+        x = x + self.mlp(self.mlp_norm(x))
+        return x
+
+
+# ---------------------------------------------------------------------------
+# Top-level model
+# ---------------------------------------------------------------------------
+#
+# The forward pass top to bottom:
+#
+#   input_ids (B, S)
+#       -> embed lookup           -> (B, S, H)
+#       -> 22 transformer blocks  -> (B, S, H)   each block reads/writes the
+#                                                residual stream
+#       -> final RMSNorm          -> (B, S, H)
+#       -> LM head Linear         -> (B, S, vocab) -- next-token logits
+#
+# Why a final RMSNorm before the LM head?
+#
+#   With pre-norm, the residual stream `x` exits the last block UN-normed.
+#   The LM head expects a normalized input distribution; without the final
+#   norm the model's outputs would be at the mercy of however the stream
+#   happened to scale by layer 22. One more RMSNorm fixes that.
+#
+# Why is the LM head a separate Linear (not tied to the embedding)?
+#
+#   Some models tie the embedding and LM head to save params (GPT-2 does).
+#   TinyLlama does NOT tie -- `tie_word_embeddings=False` in its config --
+#   so `lm_head.weight` is a distinct learned matrix. We have to match.
+# ---------------------------------------------------------------------------
+
+
+class LlamaConfig:
+    """Plain config object. Matches the fields we need from HF's config.json."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        hidden_size: int,
+        intermediate_size: int,
+        num_hidden_layers: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        max_position_embeddings: int,
+        rms_norm_eps: float,
+        rope_theta: float,
+        tie_word_embeddings: bool,
+    ) -> None:
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads
+        self.max_position_embeddings = max_position_embeddings
+        self.rms_norm_eps = rms_norm_eps
+        self.rope_theta = rope_theta
+        self.tie_word_embeddings = tie_word_embeddings
+
+    @classmethod
+    def from_hf_json(cls, path: str | Path) -> "LlamaConfig":
+        with open(path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        return cls(
+            vocab_size=d["vocab_size"],
+            hidden_size=d["hidden_size"],
+            intermediate_size=d["intermediate_size"],
+            num_hidden_layers=d["num_hidden_layers"],
+            num_attention_heads=d["num_attention_heads"],
+            # Some configs default this to num_attention_heads (i.e. MHA);
+            # TinyLlama explicitly sets it to 4.
+            num_key_value_heads=d.get("num_key_value_heads", d["num_attention_heads"]),
+            max_position_embeddings=d["max_position_embeddings"],
+            rms_norm_eps=d.get("rms_norm_eps", 1e-5),
+            rope_theta=d.get("rope_theta", 10000.0),
+            tie_word_embeddings=d.get("tie_word_embeddings", False),
+        )
+
+
+class LlamaModel(nn.Module):
+    def __init__(self, config: LlamaConfig) -> None:
+        super().__init__()
+        self.config = config
+
+        # Token embedding: vocab_size x hidden. Looks up a learned vector
+        # per token id. This is the input to the residual stream.
+        self.embed = nn.Embedding(config.vocab_size, config.hidden_size)
+
+        # Stack of decoder blocks. Each writes a delta into the residual stream.
+        self.layers = nn.ModuleList([
+            TransformerBlock(
+                hidden_size=config.hidden_size,
+                intermediate_size=config.intermediate_size,
+                num_heads=config.num_attention_heads,
+                num_kv_heads=config.num_key_value_heads,
+                max_seq_len=config.max_position_embeddings,
+                rope_base=config.rope_theta,
+                rms_eps=config.rms_norm_eps,
+            )
+            for _ in range(config.num_hidden_layers)
+        ])
+
+        # Final norm before LM head (see comment block above).
+        self.final_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
+        # LM head: hidden -> vocab. No bias, matching LLaMA.
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        # If the config asks for weight tying, we point lm_head at embed.
+        # TinyLlama doesn't, but we honor the flag for completeness.
+        if config.tie_word_embeddings:
+            self.lm_head.weight = self.embed.weight
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            input_ids: (B, S) int64.
+
+        Returns:
+            logits: (B, S, vocab_size). Next-token logits at every position.
+        """
+        # Embed: (B, S) -> (B, S, H). Initial state of the residual stream.
+        x = self.embed(input_ids)
+
+        # Walk the stack. Each block returns an updated residual stream.
+        for block in self.layers:
+            x = block(x)
+
+        # Final norm + projection to vocab.
+        x = self.final_norm(x)
+        logits = self.lm_head(x)
+        return logits
+
+
+# ---------------------------------------------------------------------------
+# Weight loading from a Hugging Face checkpoint
+# ---------------------------------------------------------------------------
+#
+# Strategy:
+#   1. Download `config.json` and `model.safetensors` from the HF hub via
+#      huggingface_hub (no `transformers` import needed).
+#   2. Build a LlamaConfig from the JSON.
+#   3. Construct our LlamaModel.
+#   4. Read the state_dict from the safetensors file.
+#   5. Rename HF parameter keys to OUR parameter names.
+#   6. Cast to fp32 (TinyLlama ships in bf16; we want deterministic parity).
+#   7. Call load_state_dict(strict=True) -- this is the load-time assertion
+#      that we got every param accounted for, with the right shapes.
+#
+# HF -> our names:
+#   model.embed_tokens.weight                            -> embed.weight
+#   model.layers.{i}.input_layernorm.weight              -> layers.{i}.attn_norm.weight
+#   model.layers.{i}.self_attn.q_proj.weight             -> layers.{i}.attn.q_proj.weight
+#   model.layers.{i}.self_attn.k_proj.weight             -> layers.{i}.attn.k_proj.weight
+#   model.layers.{i}.self_attn.v_proj.weight             -> layers.{i}.attn.v_proj.weight
+#   model.layers.{i}.self_attn.o_proj.weight             -> layers.{i}.attn.o_proj.weight
+#   model.layers.{i}.post_attention_layernorm.weight     -> layers.{i}.mlp_norm.weight
+#   model.layers.{i}.mlp.gate_proj.weight                -> layers.{i}.mlp.gate_proj.weight
+#   model.layers.{i}.mlp.up_proj.weight                  -> layers.{i}.mlp.up_proj.weight
+#   model.layers.{i}.mlp.down_proj.weight                -> layers.{i}.mlp.down_proj.weight
+#   model.norm.weight                                    -> final_norm.weight
+#   lm_head.weight                                       -> lm_head.weight
+# ---------------------------------------------------------------------------
+
+
+MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+
+def _remap_hf_key(hf_key: str) -> str | None:
+    """Translate one HF parameter name to our module's name.
+
+    Returns None for keys we deliberately ignore (none currently).
+    """
+    # Top-level rewrites.
+    if hf_key == "model.embed_tokens.weight":
+        return "embed.weight"
+    if hf_key == "model.norm.weight":
+        return "final_norm.weight"
+    if hf_key == "lm_head.weight":
+        return "lm_head.weight"
+
+    # Per-layer rewrites. HF emits `model.layers.{i}.<rest>`.
+    prefix = "model.layers."
+    if hf_key.startswith(prefix):
+        rest = hf_key[len(prefix):]
+        # rest looks like "{i}.input_layernorm.weight" etc.
+        idx_str, sublayer = rest.split(".", 1)
+        sublayer_map = {
+            "input_layernorm.weight":            "attn_norm.weight",
+            "self_attn.q_proj.weight":           "attn.q_proj.weight",
+            "self_attn.k_proj.weight":           "attn.k_proj.weight",
+            "self_attn.v_proj.weight":           "attn.v_proj.weight",
+            "self_attn.o_proj.weight":           "attn.o_proj.weight",
+            "post_attention_layernorm.weight":   "mlp_norm.weight",
+            "mlp.gate_proj.weight":              "mlp.gate_proj.weight",
+            "mlp.up_proj.weight":                "mlp.up_proj.weight",
+            "mlp.down_proj.weight":              "mlp.down_proj.weight",
+        }
+        if sublayer in sublayer_map:
+            return f"layers.{idx_str}.{sublayer_map[sublayer]}"
+    return None
+
+
+def load_tinyllama_from_hf(
+    model_name: str = MODEL_NAME,
+    dtype: torch.dtype = torch.float32,
+) -> tuple[LlamaModel, LlamaConfig]:
+    """Build a LlamaModel and populate it from the HF safetensors checkpoint.
+
+    We deliberately avoid `transformers.AutoModelForCausalLM` -- only
+    `huggingface_hub` (which is just a download client) and `safetensors`
+    (which is a tensor file format).
+    """
+    from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+
+    # 1) Download config + weights into the HF cache. These calls are
+    #    cache-aware: if the files are already on disk they just return
+    #    the path without re-downloading.
+    config_path = hf_hub_download(repo_id=model_name, filename="config.json")
+    weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors")
+
+    # 2) Build our config from HF's config.json.
+    config = LlamaConfig.from_hf_json(config_path)
+
+    # 3) Construct an EMPTY model with the right architecture.
+    model = LlamaModel(config)
+
+    # 4) Read the raw HF state_dict off disk.
+    hf_state = load_file(weights_path)
+
+    # 5) Rename HF keys to ours and cast to the requested dtype.
+    new_state: dict[str, torch.Tensor] = {}
+    unmapped: list[str] = []
+    for hf_key, tensor in hf_state.items():
+        our_key = _remap_hf_key(hf_key)
+        if our_key is None:
+            unmapped.append(hf_key)
+            continue
+        new_state[our_key] = tensor.to(dtype)
+    if unmapped:
+        raise RuntimeError(
+            f"Unrecognized HF parameters (refusing to silently drop): {unmapped}"
+        )
+
+    # 6) Strict load. This will raise loudly if any of our params are
+    #    missing from the HF dict, or vice versa, or if shapes don't match.
+    missing, unexpected = model.load_state_dict(new_state, strict=False)
+    # We use strict=False so we can inspect what's missing/unexpected and
+    # produce a clearer error. RoPE cos/sin buffers aren't in the state
+    # dict (they're not persistent), so they show up in `missing` and that's
+    # fine.
+    rope_buffers = {f"layers.{i}.attn.rope_cos" for i in range(config.num_hidden_layers)} | \
+                   {f"layers.{i}.attn.rope_sin" for i in range(config.num_hidden_layers)}
+    real_missing = [m for m in missing if m not in rope_buffers]
+    if real_missing or unexpected:
+        raise RuntimeError(
+            f"Weight load mismatch. Missing: {real_missing}. Unexpected: {unexpected}"
+        )
+
+    # 7) Move to eval mode and cast the whole module (covers buffers and
+    #    any non-parameter state) to the requested dtype.
+    model.eval()
+    model.to(dtype)
+    return model, config
+
+
+# ---------------------------------------------------------------------------
+# Day 2 entry point: load, predict one greedy next token, print it.
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    # The tokenizer is just a deterministic string<->id mapping. Using HF's
+    # tokenizer here is fine -- the "from scratch" requirement is for the
+    # model's forward pass, not for tokenization (which is a huge BPE table).
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model, _config = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
+
+    prompt = "The capital of France is"
+    inputs = tokenizer(prompt, return_tensors="pt")
+    input_ids = inputs["input_ids"]
+
+    with torch.no_grad():
+        logits = model(input_ids)  # (1, S, vocab)
+
+    # Last position == prediction for what comes next.
+    next_token_logits = logits[0, -1, :]
+    next_token_id = int(torch.argmax(next_token_logits))
+    next_token = tokenizer.decode([next_token_id])
+
+    print(f"Prompt: {prompt}")
+    print(f"Next token: {next_token}")
+
+
+if __name__ == "__main__":
+    main()
