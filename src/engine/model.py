@@ -181,14 +181,15 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        kv_cache: "SimpleKVCache | None" = None,
+        kv_cache: "SimpleKVCache | list[SimpleKVCache] | None" = None,
         layer_idx: int | None = None,
     ) -> torch.Tensor:
         # Sublayer 1: attention. The cache lives inside attention; we just
-        # pass it through. The residual `x` is preserved; only the *delta*
-        # from attention is added back.
+        # pass it through. Type may be a single cache OR a list (batched
+        # decode); attention dispatches.
         x = x + self.attn(self.attn_norm(x), kv_cache=kv_cache, layer_idx=layer_idx)
-        # Sublayer 2: MLP. Position-agnostic, no cache involvement.
+        # Sublayer 2: MLP. Position-agnostic, no cache involvement, batches
+        # cleanly across rows.
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
@@ -305,17 +306,18 @@ class LlamaModel(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        kv_cache: SimpleKVCache | None = None,
+        kv_cache: SimpleKVCache | list[SimpleKVCache] | None = None,
     ) -> torch.Tensor:
         """
         Args:
             input_ids: (B, S) int64. In prefill S = prompt length. In a
                 cached decode step S = 1.
-            kv_cache: optional. If provided, each layer reads its previous
-                K/V from this cache (and appends the new K/V for this call).
-                The cache's seq_len() at entry tells attention the absolute
-                position of the FIRST token in `input_ids` -- this is how
-                RoPE knows where it is.
+            kv_cache: one of:
+                * None: no cache, recompute everything.
+                * SimpleKVCache: single-request prefill or decode.
+                * list[SimpleKVCache]: batched decode across B requests,
+                    each with its own cache. S must be 1; each cache is at
+                    its own current seq_len. Attention dispatches.
 
         Returns:
             logits: (B, S, vocab_size).

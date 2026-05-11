@@ -244,21 +244,25 @@ class MultiHeadAttention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        kv_cache: "SimpleKVCache | None" = None,
+        kv_cache: "SimpleKVCache | list[SimpleKVCache] | None" = None,
         layer_idx: int | None = None,
     ) -> torch.Tensor:
         """
         Args:
             x: (B, S, H) -- already RMSNorm'd by the caller.
-            kv_cache: optional. If provided, we read/write this layer's slot.
-                None means "no cache, recompute everything" (the Day 2-4 path).
+            kv_cache: one of:
+                * None: no cache, recompute everything (the Day 2-4 path).
+                * SimpleKVCache: single-request prefill or decode.
+                * list[SimpleKVCache]: BATCHED DECODE across B requests, each
+                    with its own cache. S must be 1; each cache is at its
+                    own current seq_len. Continuous-batching entry point.
             layer_idx: which layer slot in the cache to use. Required when
                 kv_cache is not None.
 
         Returns:
             (B, S, H) -- to be added to the residual stream by the caller.
 
-        Two modes:
+        Two modes for a single cache:
             * Prefill: kv_cache is None (no caching at all) OR kv_cache is
               empty for this layer. S is typically > 1. Standard causal SDPA.
               If a cache was provided, we APPEND the freshly-rotated K/V.
@@ -267,6 +271,11 @@ class MultiHeadAttention(nn.Module):
               cache, then attend the new Q against the FULL cached K/V.
               No causal mask -- the new query naturally sees the full past.
         """
+        # Dispatch to the batched-decode path when caller passes a list of
+        # per-request caches. This is the Day 6 continuous-batching entry.
+        if isinstance(kv_cache, list):
+            return self._forward_decode_batched(x, kv_cache, layer_idx)
+
         B, S, _ = x.shape
 
         if kv_cache is not None and layer_idx is None:
@@ -344,4 +353,114 @@ class MultiHeadAttention(nn.Module):
         attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, self.num_heads * self.head_dim)
 
         # 8) Output projection mixes information across heads.
+        return self.o_proj(attn_out)
+
+    # -----------------------------------------------------------------------
+    # Batched decode across multiple per-request KV caches (Day 6).
+    # -----------------------------------------------------------------------
+    #
+    # Why this needs its own path:
+    #
+    #   In single-cache decode, every batch row (there's just one) is at the
+    #   same absolute position and shares one cache tensor. In a continuous
+    #   batch, B requests are each at their OWN point in their OWN sequence:
+    #     - request 0 might be on its 4th decode token
+    #     - request 1 might be on its 17th decode token
+    #     - their K/V caches have different lengths
+    #
+    #   Two consequences:
+    #     1. RoPE per row: each row's new token sits at a different absolute
+    #        position. We gather per-row cos/sin from a positions vector and
+    #        broadcast over the head axis.
+    #     2. SDPA per row: each row's cached K/V has a different seq length,
+    #        so we can't stack them into one rectangular tensor without
+    #        padding+masking. We loop over rows for SDPA only.
+    #
+    #   What STAYS batched: the big GEMMs (Q/K/V/output projections) and
+    #   the MLP block (handled by TransformerBlock). Those are the compute
+    #   that matters; batching them is the whole reason continuous batching
+    #   is a throughput win. The per-row SDPA loop is the next bottleneck,
+    #   and Day 7 (paged attention) is what eliminates it.
+    # -----------------------------------------------------------------------
+
+    def _forward_decode_batched(
+        self,
+        x: torch.Tensor,
+        caches: list["SimpleKVCache"],
+        layer_idx: int,
+    ) -> torch.Tensor:
+        """Batched-decode forward across B per-request caches.
+
+        Args:
+            x: (B, 1, H) -- one new token per request, RMSNorm'd by caller.
+            caches: list of length B, each a SimpleKVCache for one request.
+                Each cache may have a DIFFERENT seq_len at entry.
+            layer_idx: required.
+
+        Returns:
+            (B, 1, H).
+        """
+        B, S, _ = x.shape
+        assert S == 1, "batched decode is exactly one new token per request"
+        assert len(caches) == B, (
+            f"caches list length {len(caches)} != batch size {B}"
+        )
+        if layer_idx is None:
+            raise ValueError("layer_idx is required for batched decode")
+
+        # 1) Batched projections. The GEMMs run once over the whole batch.
+        q = self.q_proj(x)  # (B, 1, NQ*D)
+        k = self.k_proj(x)  # (B, 1, NKV*D)
+        v = self.v_proj(x)  # (B, 1, NKV*D)
+
+        # 2) Per-head reshape. (B, 1, NH, D) -> (B, NH, 1, D)
+        q = q.view(B, S, self.num_heads,    self.head_dim).transpose(1, 2)
+        k = k.view(B, S, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = v.view(B, S, self.num_kv_heads, self.head_dim).transpose(1, 2)
+
+        # 3) Per-row RoPE.
+        #    Each request's new token sits at a different absolute position --
+        #    that position is the request's CURRENT cache length (before this
+        #    layer appends). We gather a (B,) position vector and use it to
+        #    index into the cos/sin table.
+        positions = torch.tensor(
+            [c.seq_len(layer_idx) for c in caches],
+            dtype=torch.long,
+            device=q.device,
+        )                                                     # (B,)
+        cos = self.rope_cos[positions].to(dtype=q.dtype)      # (B, D)
+        sin = self.rope_sin[positions].to(dtype=q.dtype)      # (B, D)
+        # Broadcast over heads (dim 1) and seq (dim 2): (B, 1, 1, D).
+        cos = cos.unsqueeze(1).unsqueeze(1)
+        sin = sin.unsqueeze(1).unsqueeze(1)
+        q = q * cos + _rotate_half(q) * sin
+        k = k * cos + _rotate_half(k) * sin
+
+        # 4) Per-request cache update + SDPA. This is the loop we cannot
+        #    avoid without padding (or paged attention -- Day 7). The body
+        #    is the same per-request work the single-cache path does.
+        attn_outs: list[torch.Tensor] = []
+        for i in range(B):
+            # Append this row's new K/V to its own cache.
+            k_to_cache = k[i:i+1].transpose(1, 2)  # (1, 1, NKV, D)
+            v_to_cache = v[i:i+1].transpose(1, 2)
+            caches[i].append(layer_idx, k_to_cache, v_to_cache)
+
+            # Fetch this request's full cached K, V.
+            k_full, v_full = caches[i].get(layer_idx)         # (1, S_i+1, NKV, D)
+            k_i = k_full.transpose(1, 2)                       # (1, NKV, S_i+1, D)
+            v_i = v_full.transpose(1, 2)
+
+            # GQA: replicate KV heads to match Q heads.
+            k_i = k_i.repeat_interleave(self.group_size, dim=1)
+            v_i = v_i.repeat_interleave(self.group_size, dim=1)
+
+            q_i = q[i:i+1]                                    # (1, NQ, 1, D)
+            # Decode mode: no causal mask. The new query sees the full past.
+            out_i = F.scaled_dot_product_attention(q_i, k_i, v_i, is_causal=False)
+            attn_outs.append(out_i)                            # (1, NQ, 1, D)
+
+        # 5) Re-batch and project out. Back to a single GEMM for o_proj.
+        attn_out = torch.cat(attn_outs, dim=0)                # (B, NQ, 1, D)
+        attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, self.num_heads * self.head_dim)
         return self.o_proj(attn_out)
