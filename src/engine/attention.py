@@ -28,9 +28,14 @@ Shape conventions used throughout this file:
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+if TYPE_CHECKING:
+    from src.engine.kv_cache import SimpleKVCache
 
 
 # ---------------------------------------------------------------------------
@@ -236,17 +241,38 @@ class MultiHeadAttention(nn.Module):
         self.register_buffer("rope_cos", cos, persistent=False)
         self.register_buffer("rope_sin", sin, persistent=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        kv_cache: "SimpleKVCache | None" = None,
+        layer_idx: int | None = None,
+    ) -> torch.Tensor:
         """
         Args:
             x: (B, S, H) -- already RMSNorm'd by the caller.
+            kv_cache: optional. If provided, we read/write this layer's slot.
+                None means "no cache, recompute everything" (the Day 2-4 path).
+            layer_idx: which layer slot in the cache to use. Required when
+                kv_cache is not None.
 
         Returns:
             (B, S, H) -- to be added to the residual stream by the caller.
+
+        Two modes:
+            * Prefill: kv_cache is None (no caching at all) OR kv_cache is
+              empty for this layer. S is typically > 1. Standard causal SDPA.
+              If a cache was provided, we APPEND the freshly-rotated K/V.
+            * Decode: kv_cache is non-empty for this layer. S is typically 1.
+              We compute Q/K/V for the new token only, append K/V to the
+              cache, then attend the new Q against the FULL cached K/V.
+              No causal mask -- the new query naturally sees the full past.
         """
         B, S, _ = x.shape
 
-        # 1) Project to Q, K, V.
+        if kv_cache is not None and layer_idx is None:
+            raise ValueError("layer_idx is required when kv_cache is provided")
+
+        # 1) Project to Q, K, V on the input tokens (just the new ones in decode).
         #    Q: (B, S, NQ*D)
         #    K: (B, S, NKV*D)
         #    V: (B, S, NKV*D)
@@ -260,31 +286,62 @@ class MultiHeadAttention(nn.Module):
         k = k.view(B, S, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = v.view(B, S, self.num_kv_heads, self.head_dim).transpose(1, 2)
 
-        # 3) Apply RoPE to Q and K. V is NOT rotated -- only the things that
-        #    participate in the dot product need position info.
-        cos = self.rope_cos[:S].to(dtype=q.dtype)
-        sin = self.rope_sin[:S].to(dtype=q.dtype)
+        # 3) RoPE -- THE position-offset gotcha.
+        #
+        #    The absolute position of the FIRST token in `x` is the current
+        #    seq_len of the cache. In prefill (empty cache) that's 0. In a
+        #    decode step that just added 5 prompt tokens earlier, the next
+        #    input's position is 5. RoPE indexes the cos/sin table by
+        #    ABSOLUTE position, not position-within-this-input.
+        #
+        #    If we forgot this offset, we'd always rotate the new token's Q
+        #    and K by angle 0, breaking every dot product against cached K
+        #    that was rotated at its real position.
+        # Read THIS layer's seq_len, not a global one. Earlier layers in
+        # this same forward pass have already appended to their slots; if
+        # we asked for layer 0's count we'd see N+1 instead of N for every
+        # layer past the first.
+        pos_offset = kv_cache.seq_len(layer_idx) if kv_cache is not None else 0
+        cos = self.rope_cos[pos_offset:pos_offset + S].to(dtype=q.dtype)
+        sin = self.rope_sin[pos_offset:pos_offset + S].to(dtype=q.dtype)
         q, k = apply_rope(q, k, cos, sin)
 
-        # 4) GQA expansion: replicate each KV head G times so K/V have 32
-        #    head slots instead of 4. repeat_interleave keeps the order:
-        #    [h0, h0, ..., h0(x8), h1, h1, ..., h1(x8), ...]
-        #    which matches how Q heads were laid out (heads 0..7 share KV
-        #    head 0, heads 8..15 share KV head 1, etc).
+        # 4) Cache update.
+        #    We cache K *after* RoPE, V as-is (V isn't rotated). Caching
+        #    post-rotation means future decode steps don't have to re-rotate
+        #    the historical K -- which would defeat the cache's purpose.
+        #
+        #    The cache layout stores (B, seq, NKV, D), so we transpose
+        #    BACK to seq-major to append. Then we read the full cached K, V
+        #    back out and transpose to (B, NKV, seq_total, D) for SDPA.
+        if kv_cache is not None:
+            k_to_cache = k.transpose(1, 2)  # (B, S, NKV, D)
+            v_to_cache = v.transpose(1, 2)  # (B, S, NKV, D)
+            kv_cache.append(layer_idx, k_to_cache, v_to_cache)
+            k_full, v_full = kv_cache.get(layer_idx)        # (B, S_total, NKV, D)
+            k = k_full.transpose(1, 2)                       # (B, NKV, S_total, D)
+            v = v_full.transpose(1, 2)                       # (B, NKV, S_total, D)
+        # If no cache: k, v stay at (B, NKV, S, D) -- already correct shape.
+
+        # 5) GQA expansion: replicate each KV head G times to match the
+        #    32 query heads. Cheap memory-replication, no real compute.
         k = k.repeat_interleave(self.group_size, dim=1)
         v = v.repeat_interleave(self.group_size, dim=1)
 
-        # 5) Scaled dot-product attention with causal mask. SDPA handles
-        #    the scaling by 1/sqrt(D), the softmax, and the mask in one fused
-        #    op -- and crucially, it never materializes the (S, S) matrix
-        #    when using FlashAttention-style backends.
-        attn_out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-        # attn_out: (B, NQ, S, D)
+        # 6) SDPA. Causal mask flip:
+        #    - Prefill (q_len > 1): causal triangle is needed so position i
+        #      can't peek at position i+1.
+        #    - Decode  (q_len == 1): the single new query sits at the right
+        #      end of the (1, S_total) attention matrix and naturally sees
+        #      every cached key (all in its past). is_causal=True would
+        #      use SDPA's upper-left-aligned mask and zero out every column
+        #      except column 0 -- catastrophically wrong.
+        is_causal = S > 1
+        attn_out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        # attn_out: (B, NQ, S, D) -- still only S queries on the output side.
 
-        # 6) Merge heads back: (B, NQ, S, D) -> (B, S, NQ*D) -> (B, S, H).
-        #    .contiguous() because transpose makes the tensor non-contiguous
-        #    and view requires contiguous memory.
+        # 7) Merge heads back: (B, NQ, S, D) -> (B, S, NQ*D) -> (B, S, H).
         attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, self.num_heads * self.head_dim)
 
-        # 7) Output projection mixes information across heads.
+        # 8) Output projection mixes information across heads.
         return self.o_proj(attn_out)

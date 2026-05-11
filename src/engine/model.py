@@ -28,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.engine.attention import MultiHeadAttention
+from src.engine.kv_cache import SimpleKVCache
 
 
 # ---------------------------------------------------------------------------
@@ -177,11 +178,17 @@ class TransformerBlock(nn.Module):
         self.mlp_norm = RMSNorm(hidden_size, eps=rms_eps)
         self.mlp = SwiGLUMLP(hidden_size, intermediate_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Sublayer 1: attention. The residual `x` is preserved; only the
-        # *delta* from attention is added back.
-        x = x + self.attn(self.attn_norm(x))
-        # Sublayer 2: MLP. Same pattern.
+    def forward(
+        self,
+        x: torch.Tensor,
+        kv_cache: "SimpleKVCache | None" = None,
+        layer_idx: int | None = None,
+    ) -> torch.Tensor:
+        # Sublayer 1: attention. The cache lives inside attention; we just
+        # pass it through. The residual `x` is preserved; only the *delta*
+        # from attention is added back.
+        x = x + self.attn(self.attn_norm(x), kv_cache=kv_cache, layer_idx=layer_idx)
+        # Sublayer 2: MLP. Position-agnostic, no cache involvement.
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
@@ -295,20 +302,31 @@ class LlamaModel(nn.Module):
         if config.tie_word_embeddings:
             self.lm_head.weight = self.embed.weight
 
-    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        kv_cache: SimpleKVCache | None = None,
+    ) -> torch.Tensor:
         """
         Args:
-            input_ids: (B, S) int64.
+            input_ids: (B, S) int64. In prefill S = prompt length. In a
+                cached decode step S = 1.
+            kv_cache: optional. If provided, each layer reads its previous
+                K/V from this cache (and appends the new K/V for this call).
+                The cache's seq_len() at entry tells attention the absolute
+                position of the FIRST token in `input_ids` -- this is how
+                RoPE knows where it is.
 
         Returns:
-            logits: (B, S, vocab_size). Next-token logits at every position.
+            logits: (B, S, vocab_size).
         """
         # Embed: (B, S) -> (B, S, H). Initial state of the residual stream.
         x = self.embed(input_ids)
 
-        # Walk the stack. Each block returns an updated residual stream.
-        for block in self.layers:
-            x = block(x)
+        # Walk the stack, passing each block its own index so attention can
+        # find its slot in the cache.
+        for i, block in enumerate(self.layers):
+            x = block(x, kv_cache=kv_cache, layer_idx=i)
 
         # Final norm + projection to vocab.
         x = self.final_norm(x)
@@ -343,44 +361,85 @@ class LlamaModel(nn.Module):
         input_ids: torch.Tensor,
         max_new_tokens: int,
         eos_token_id: int | None = None,
+        use_cache: bool = True,
     ) -> torch.Tensor:
-        """Greedy autoregressive generation, no KV cache.
+        """Greedy autoregressive generation.
 
         Args:
-            input_ids: (B, S_prompt) int64. The prompt tokens.
-            max_new_tokens: hard cap on tokens generated. We stop here even
-                if EOS hasn't been hit.
-            eos_token_id: if provided, we stop early when EVERY sequence
-                in the batch has just emitted this id. Set to None to
-                always run the full max_new_tokens budget.
+            input_ids: (B, S_prompt) int64.
+            max_new_tokens: cap on tokens generated.
+            eos_token_id: if provided, stop early when all batch rows emit it.
+            use_cache: True = O(N) cached decode. False = O(N^2) naive
+                recompute (kept as a parity reference and a clean fallback).
 
         Returns:
-            (B, S_prompt + n_generated) int64. The full sequence: the
-            original prompt followed by every generated token. Matches
-            HF's `generate()` return convention.
+            (B, S_prompt + n_generated) int64. Prompt + completion.
         """
-        # `generated` is the running sequence we feed back into the model.
-        # We rebuild it from scratch each step rather than maintaining state.
+        if use_cache:
+            return self._generate_cached(input_ids, max_new_tokens, eos_token_id)
+        return self._generate_naive(input_ids, max_new_tokens, eos_token_id)
+
+    def _generate_naive(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int,
+        eos_token_id: int | None,
+    ) -> torch.Tensor:
+        """O(N^2) reference: recompute the full forward each step."""
         generated = input_ids
-
         for _ in range(max_new_tokens):
-            # Full forward pass over the WHOLE current sequence.
-            # logits: (B, S_current, vocab)
+            # Full forward over the WHOLE current sequence.
             logits = self(generated)
-
-            # Greedy: argmax over the vocab at the LAST position.
-            # That position's logits are the model's "what comes next?"
-            # prediction. Earlier positions predict already-known tokens.
-            # next_token: (B, 1)
             next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-
-            # Append. cat along seq dim grows our running sequence by one.
             generated = torch.cat([generated, next_token], dim=1)
+            if eos_token_id is not None and (next_token == eos_token_id).all():
+                break
+        return generated
 
-            # Early stop. Stops only when EVERY batch row hit EOS at this
-            # step -- a single row hitting EOS while others haven't would
-            # require per-row masking, which we skip here (batch=1 is the
-            # interesting case for now).
+    def _generate_cached(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int,
+        eos_token_id: int | None,
+    ) -> torch.Tensor:
+        """O(N) cached decode.
+
+        Two distinct phases:
+          1. PREFILL: forward the entire prompt once. The cache absorbs
+             the prompt's K/V at every layer. We then pick the next token
+             off the LAST position's logits.
+          2. DECODE: feed only the just-predicted single token to the model.
+             Attention will RoPE-rotate it at position cache.seq_len(),
+             append its K/V, and let Q attend to the full cached past.
+             We loop this max_new_tokens - 1 more times.
+
+        Both phases call the same forward(). The only difference is the
+        input length and the cache's current seq_len, which together
+        determine RoPE's position offset and the causal-mask flip.
+        """
+        cache = SimpleKVCache(num_layers=self.config.num_hidden_layers)
+
+        # ---- Phase 1: prefill ----
+        # Feed the prompt. After this, the cache holds K/V for positions
+        # [0 .. S_prompt - 1] in every layer.
+        logits = self(input_ids, kv_cache=cache)
+        # Greedy pick from the prompt's last position. This is the FIRST
+        # generated token.
+        next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+        generated = torch.cat([input_ids, next_token], dim=1)
+
+        if eos_token_id is not None and (next_token == eos_token_id).all():
+            return generated
+
+        # ---- Phase 2: decode, one token at a time ----
+        # We've already emitted one new token above, so loop max_new_tokens - 1
+        # more times.
+        for _ in range(max_new_tokens - 1):
+            # Crucially, the input is just the single newest token. The
+            # cache provides everything else.
+            logits = self(next_token, kv_cache=cache)
+            next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=1)
             if eos_token_id is not None and (next_token == eos_token_id).all():
                 break
 
