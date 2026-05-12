@@ -172,7 +172,7 @@
     /* ---- Panels --------------------------------------------------------- */
     main {
       display: grid;
-      grid-template-columns: 40% 60%;
+      grid-template-columns: 50% 50%;
       gap: 1px;
       background: var(--border);
     }
@@ -193,19 +193,23 @@
       justify-content: space-between;
     }
 
-    /* ---- Request rows --------------------------------------------------- */
+    /* ---- Request rows ---------------------------------------------------
+       Compact single-line rows so 8 active requests fit without scrolling.
+       Layout: id | status badge | single-line preview (last ~40 chars of
+       generated text, prompt as fallback before any tokens) | token count. */
     .request-row {
       display: grid;
-      grid-template-columns: 90px 80px 1fr auto;
-      gap: 12px;
-      padding: 10px 12px;
+      grid-template-columns: 80px 72px 1fr auto;
+      gap: 10px;
+      padding: 6px 10px;
       border: 1px solid var(--border-2);
       border-radius: 3px;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       font-family: var(--mono);
       font-size: 12px;
       transition: background 0.4s, border-color 0.4s;
       align-items: center;
+      min-height: 36px;
     }
     .request-row.flash {
       background: rgba(0, 212, 255, 0.06);
@@ -221,7 +225,7 @@
     .req-status {
       font-size: 10px;
       font-weight: 600;
-      padding: 2px 8px;
+      padding: 2px 6px;
       border-radius: 2px;
       text-align: center;
       letter-spacing: 0.05em;
@@ -231,23 +235,14 @@
     .status-DECODE  { background: #003345; color: var(--accent); }
     .status-DONE    { background: #0f2a14; color: var(--ok); }
 
-    .req-body {
-      overflow: hidden;
-    }
-    .req-prompt {
-      color: var(--text-dim);
+    .req-preview {
+      color: var(--text);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      font-size: 11px;
     }
-    .req-output {
-      color: var(--text);
-      margin-top: 4px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 3.2em;
-      overflow: hidden;
-    }
+    .req-preview.empty { color: var(--text-dim); }
     .req-tokens {
       font-size: 10px;
       color: var(--text-mute);
@@ -411,7 +406,7 @@
 
   <main>
     <section class="panel">
-      <h2>Active Requests (<span id="active-count-2">0</span>)</h2>
+      <h2><span>Active Requests (<span id="active-count-2">0</span>)</span></h2>
       <div id="request-list"></div>
     </section>
 
@@ -632,13 +627,23 @@ function renderRequests() {
     row.className = 'request-row' + (state.flashing.has(r.request_id) ? ' flash' : '');
     const shortId = (r.request_id || '').slice(0, 8);
     const tokenText = (r.tokens || []).map(t => t.str || '').join('');
+    // Single-line preview, ~40 chars. Once tokens have been generated we
+    // show the TAIL of the output so the newest tokens are always visible
+    // (truncate from the front with an ellipsis). Before any tokens we fall
+    // back to the prompt, truncated from the end.
+    let preview;
+    let previewClass = 'req-preview';
+    if (tokenText) {
+      preview = tokenText.length > 40 ? '…' + tokenText.slice(-39) : tokenText;
+    } else {
+      const p = r.prompt || '';
+      preview = p.length > 40 ? p.slice(0, 39) + '…' : p;
+      previewClass += ' empty';
+    }
     row.innerHTML = `
       <div class="req-id" style="color: ${colorFor(r.request_id)}">${escapeHtml(shortId)}</div>
       <div class="req-status status-${r.status || 'WAITING'}">${r.status || 'WAITING'}</div>
-      <div class="req-body">
-        <div class="req-prompt">${escapeHtml(r.prompt || '')}</div>
-        <div class="req-output">${escapeHtml(tokenText)}</div>
-      </div>
+      <div class="${previewClass}">${escapeHtml(preview)}</div>
       <div class="req-tokens">${(r.tokens || []).length}t</div>
     `;
     container.appendChild(row);
