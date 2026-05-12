@@ -121,6 +121,7 @@ class ContinuousBatchScheduler:
         block_size: int = 16,
         event_bus: "EventBus | None" = None,
         token_decoder: Callable[[int], str] | None = None,
+        token_emitter: Callable[[str, int, str, int], None] | None = None,
     ) -> None:
         """
         Args:
@@ -142,6 +143,16 @@ class ContinuousBatchScheduler:
                 Only used for the decode_step event's human-readable
                 token text. None means the event omits the string and
                 the consumer can decode on its own.
+            token_emitter: optional callable
+                `(request_id, token_id, token_str, step_idx) -> None`.
+                Fired once per generated token for EACH request, in both
+                prefill (the first generated token) and decode phases.
+                Used by the SSE `/generate/stream` plumbing to push
+                tokens onto per-request asyncio queues from this
+                (synchronous, scheduler-thread) call site. The scheduler
+                stays asyncio-unaware; bridging happens in the callback
+                via `loop.call_soon_threadsafe`. None means no
+                per-token push (existing engine tests are unaffected).
 
         Two independent budgets:
             * max_batch_size: how many requests can run in one forward pass.
@@ -155,6 +166,7 @@ class ContinuousBatchScheduler:
         self.block_size = block_size
         self.event_bus = event_bus
         self.token_decoder = token_decoder
+        self.token_emitter = token_emitter
 
         # The KV pool. One big tensor shared across all requests. The pool
         # also gets the event_bus so block_allocated / block_freed fire
@@ -162,6 +174,11 @@ class ContinuousBatchScheduler:
         head_dim = model.config.hidden_size // model.config.num_attention_heads
         dtype = next(model.parameters()).dtype
         device = next(model.parameters()).device
+        # Stash the model's device so add_request and step() can put
+        # prompt + decode inputs on it without re-reading parameters() each
+        # call. The pool's K_pool.device is the same value; keeping it
+        # here makes the dependency explicit at the scheduler level.
+        self.device = device
         self.pool = PagedKVCache(
             num_layers=self.num_layers,
             num_blocks=num_blocks,
@@ -217,6 +234,10 @@ class ContinuousBatchScheduler:
             raise ValueError(
                 f"prompt_ids must be shape (1, S); got {tuple(prompt_ids.shape)}"
             )
+        # Move once at submission so step() / model.forward don't see a
+        # device mismatch later. Callers may hand us CPU tensors from the
+        # tokenizer; the model and KV pool live on self.device.
+        prompt_ids = prompt_ids.to(self.device)
         self.waiting.append(Request(
             request_id=request_id,
             prompt_ids=prompt_ids,
@@ -322,6 +343,16 @@ class ContinuousBatchScheduler:
             next_id = int(torch.argmax(logits[0, -1, :]))
             r.generated_token_ids.append(next_id)
             emitted.append((r.request_id, next_id))
+            # Per-token streaming hook. Prefill produces ONE token (the
+            # first generated one) and that token must reach SSE
+            # subscribers just like decode tokens do, so fire here too.
+            if self.token_emitter is not None:
+                self.token_emitter(
+                    r.request_id,
+                    next_id,
+                    self._decode_token_str(next_id),
+                    self._step_idx,
+                )
             self._emit(events.prefill_done(
                 request_id=r.request_id,
                 # All prefill blocks are physically allocated at admit-time;
@@ -336,6 +367,7 @@ class ContinuousBatchScheduler:
             input_ids = torch.tensor(
                 [[r.last_token_id] for r in decode_reqs],
                 dtype=torch.long,
+                device=self.device,
             )
             caches = [r.cache for r in decode_reqs]
             with torch.no_grad():
@@ -348,9 +380,16 @@ class ContinuousBatchScheduler:
                 next_id = int(torch.argmax(logits[i, -1, :]))
                 r.generated_token_ids.append(next_id)
                 emitted.append((r.request_id, next_id))
-                batch_for_event.append((
-                    r.request_id, next_id, self._decode_token_str(next_id),
-                ))
+                token_str = self._decode_token_str(next_id)
+                batch_for_event.append((r.request_id, next_id, token_str))
+                # Per-token streaming hook (see prefill emit for rationale).
+                # Fired BEFORE the decode_step bus event so an SSE
+                # consumer sees the token at roughly the same wall-clock
+                # moment as the visualiser sees the batch event.
+                if self.token_emitter is not None:
+                    self.token_emitter(
+                        r.request_id, next_id, token_str, self._step_idx,
+                    )
                 if r.is_finished():
                     r.status = RequestStatus.DONE
             self._emit(events.decode_step(

@@ -20,42 +20,6 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
-
-
-def _checkpoint_is_cached(model_name: str) -> bool:
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except ImportError:
-        return False
-    config_path = try_to_load_from_cache(model_name, "config.json")
-    weights_path = try_to_load_from_cache(model_name, "model.safetensors")
-    return bool(config_path) and bool(weights_path)
-
-
-@pytest.fixture(scope="module")
-def cached_or_skip() -> None:
-    if not _checkpoint_is_cached(MODEL_NAME):
-        pytest.skip(
-            f"{MODEL_NAME} not in HF cache. "
-            "Run `python -m src.engine.model` once to download it."
-        )
-
-
-@pytest.fixture(scope="module")
-def my_model(cached_or_skip):
-    model, _ = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
-    model.eval()
-    return model
-
-
-@pytest.fixture(scope="module")
-def hf_model(cached_or_skip):
-    from transformers import AutoModelForCausalLM
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.float32)
-    model.eval()
-    return model
-
 
 # A short, deterministic prompt. Hardcoded ids -- no tokenizer dependency.
 # Corresponds to "The capital of France is" under TinyLlama's BPE.
@@ -78,10 +42,14 @@ def test_cached_matches_naive(my_model) -> None:
       2. is_causal not flipped between prefill and decode
       3. K cached before RoPE instead of after
     """
+    # Both go through my_model on DEVICE; bring to CPU before comparing so
+    # torch.equal doesn't refuse on a cross-device pair (both will be on
+    # DEVICE here, but .cpu() is cheap and keeps the test independent of
+    # where my_model happens to live).
     with_cache    = my_model.generate(PROMPT_IDS, max_new_tokens=MAX_NEW,
-                                       eos_token_id=EOS_ID, use_cache=True)
+                                       eos_token_id=EOS_ID, use_cache=True).cpu()
     without_cache = my_model.generate(PROMPT_IDS, max_new_tokens=MAX_NEW,
-                                       eos_token_id=EOS_ID, use_cache=False)
+                                       eos_token_id=EOS_ID, use_cache=False).cpu()
 
     assert with_cache.shape == without_cache.shape, (
         f"Shape mismatch: cached={tuple(with_cache.shape)} "
@@ -100,8 +68,9 @@ def test_cached_matches_naive(my_model) -> None:
 
 def test_cached_matches_hf(my_model, hf_model) -> None:
     """My cached generate vs HF cached generate, same prompt, 50 tokens."""
+    # HF stays on CPU; mine may live on CUDA. Compare on CPU.
     my_out = my_model.generate(PROMPT_IDS, max_new_tokens=MAX_NEW,
-                                eos_token_id=EOS_ID, use_cache=True)
+                                eos_token_id=EOS_ID, use_cache=True).cpu()
 
     hf_out = hf_model.generate(
         PROMPT_IDS,

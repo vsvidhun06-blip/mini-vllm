@@ -22,46 +22,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 
-
-def _checkpoint_is_cached(model_name: str) -> bool:
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except ImportError:
-        return False
-    config_path = try_to_load_from_cache(model_name, "config.json")
-    weights_path = try_to_load_from_cache(model_name, "model.safetensors")
-    return bool(config_path) and bool(weights_path)
-
-
-@pytest.fixture(scope="module")
-def cached_or_skip() -> None:
-    if not _checkpoint_is_cached(MODEL_NAME):
-        pytest.skip(
-            f"{MODEL_NAME} not in HF cache. "
-            "Run `python -m src.engine.model` once to download it, "
-            "then re-run pytest."
-        )
-
-
-@pytest.fixture(scope="module")
-def models(cached_or_skip):
-    """Load both models in fp32 once for the module."""
-    from transformers import AutoModelForCausalLM
-
-    hf_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.float32)
-    hf_model.eval()
-
-    my_model, _config = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
-    my_model.eval()
-
-    return hf_model, my_model
-
-
-def test_greedy_generation_matches_hf(models) -> None:
+def test_greedy_generation_matches_hf(hf_model, my_model) -> None:
     """Generate 30 tokens with both, assert exact token sequence equality."""
-    hf_model, my_model = models
 
     # Hardcoded ids for "The capital of France is" under TinyLlama's BPE.
     # Hardcoding lets the test isolate the model + generation logic and
@@ -90,6 +53,8 @@ def test_greedy_generation_matches_hf(models) -> None:
         max_new_tokens=max_new,
         eos_token_id=eos_id,
     )
+    # my_model may live on CUDA; HF stays on CPU. Compare on CPU.
+    my_out = my_out.cpu()
 
     assert hf_out.shape == my_out.shape, (
         f"Sequence length mismatch: HF={tuple(hf_out.shape)} "

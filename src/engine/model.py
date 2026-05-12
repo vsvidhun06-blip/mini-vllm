@@ -28,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.engine.attention import MultiHeadAttention
+from src.engine.device import DEVICE
 from src.engine.kv_cache import PagedKVCache, PagedRequestCache
 
 
@@ -322,6 +323,11 @@ class LlamaModel(nn.Module):
         Returns:
             logits: (B, S, vocab_size).
         """
+        # Be device-transparent: callers (tests, scheduler, server) may pass
+        # a CPU tensor even when the model is on CUDA. The .to() is a
+        # no-op when devices already match, so this costs nothing in the
+        # steady-state hot path.
+        input_ids = input_ids.to(self.embed.weight.device)
         # Embed: (B, S) -> (B, S, H). Initial state of the residual stream.
         x = self.embed(input_ids)
 
@@ -377,6 +383,11 @@ class LlamaModel(nn.Module):
         Returns:
             (B, S_prompt + n_generated) int64. Prompt + completion.
         """
+        # Move once at the entry point. _generate_naive and
+        # _generate_cached both `torch.cat` model outputs (on DEVICE)
+        # onto the caller-supplied tensor; if the latter is on CPU the
+        # cat raises. Moving here keeps the inner methods clean.
+        input_ids = input_ids.to(self.embed.weight.device)
         if use_cache:
             return self._generate_cached(input_ids, max_new_tokens, eos_token_id)
         return self._generate_naive(input_ids, max_new_tokens, eos_token_id)
@@ -618,9 +629,18 @@ def load_tinyllama_from_hf(
         )
 
     # 7) Move to eval mode and cast the whole module (covers buffers and
-    #    any non-parameter state) to the requested dtype.
+    #    any non-parameter state) to the requested dtype, THEN move to
+    #    the engine's target device (DEVICE = cuda if available else cpu).
+    #
+    #    Why dtype-cast on CPU first, then .to(DEVICE):
+    #      The HF safetensors load gives us a CPU state_dict. Casting on
+    #      CPU avoids materialising a second copy in VRAM during the
+    #      cast itself; the single transfer to DEVICE happens after the
+    #      dtype is already settled. For TinyLlama-1.1B in fp32 (~4.4 GB)
+    #      this matters on 8 GB cards.
     model.eval()
     model.to(dtype)
+    model.to(DEVICE)
     return model, config
 
 
@@ -638,8 +658,13 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model, _config = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
 
+    print(f"Device: {DEVICE}")
+
     prompt = "The capital of France is"
-    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
+    # The .to(DEVICE) is technically redundant -- forward() does the same
+    # move -- but doing it here makes the print-out below honest about
+    # what device the input is on for the timed greedy step.
+    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"].to(DEVICE)
 
     # Greedy generation: 20 new tokens, stop early on EOS.
     output_ids = model.generate(
@@ -650,7 +675,8 @@ def main() -> None:
 
     # output_ids includes the prompt; decode the whole thing so the user
     # can read prompt + completion as one continuous string.
-    output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    # output_ids may live on DEVICE; decoder runs on CPU ints, so move first.
+    output_text = tokenizer.decode(output_ids[0].cpu(), skip_special_tokens=True)
 
     print(f"Prompt: {prompt}")
     print(f"Output: {output_text}")

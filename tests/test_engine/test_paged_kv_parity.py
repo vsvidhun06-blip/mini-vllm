@@ -31,28 +31,7 @@ import time
 import pytest
 import torch
 
-from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 from src.engine.scheduler import ContinuousBatchScheduler
-
-
-def _checkpoint_is_cached(model_name: str) -> bool:
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except ImportError:
-        return False
-    return bool(try_to_load_from_cache(model_name, "config.json")) and \
-           bool(try_to_load_from_cache(model_name, "model.safetensors"))
-
-
-@pytest.fixture(scope="module")
-def model_and_tokenizer():
-    if not _checkpoint_is_cached(MODEL_NAME):
-        pytest.skip(f"{MODEL_NAME} not cached; run `python -m src.engine.model` first.")
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model, _ = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
-    model.eval()
-    return model, tokenizer
 
 
 # Same prompts as the Day 6 scheduler test, so the parity story is consistent

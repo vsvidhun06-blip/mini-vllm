@@ -39,23 +39,10 @@ import time
 
 import pytest
 
-from src.engine.model import MODEL_NAME
-
-
-def _checkpoint_is_cached(model_name: str) -> bool:
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except ImportError:
-        return False
-    return bool(try_to_load_from_cache(model_name, "config.json")) and \
-           bool(try_to_load_from_cache(model_name, "model.safetensors"))
-
 
 @pytest.fixture(scope="module")
-def client():
-    """Spin up a TestClient. Loads TinyLlama as a side effect of /generate."""
-    if not _checkpoint_is_cached(MODEL_NAME):
-        pytest.skip(f"{MODEL_NAME} not cached; run `python -m src.engine.model` first.")
+def client(server_engine):
+    """TestClient against the shared session engine (no second model load)."""
     from fastapi.testclient import TestClient
     from src.server.api import app
     with TestClient(app) as c:

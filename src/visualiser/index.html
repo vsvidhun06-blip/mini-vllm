@@ -626,7 +626,12 @@ function renderRequests() {
     const row = document.createElement('div');
     row.className = 'request-row' + (state.flashing.has(r.request_id) ? ' flash' : '');
     const shortId = (r.request_id || '').slice(0, 8);
-    const tokenText = (r.tokens || []).map(t => t.str || '').join('');
+    // SSE streaming, when present, gives us the running text directly.
+    // It arrives at per-token granularity (one event per token), faster
+    // and lighter-weight than waiting for the WS decode_step batch event.
+    // For requests we DIDN'T submit ourselves, no SSE stream exists; fall
+    // back to joining the WS-populated tokens array.
+    const tokenText = r.streamed_text || (r.tokens || []).map(t => t.str || '').join('');
     // Single-line preview, ~40 chars. Once tokens have been generated we
     // show the TAIL of the output so the newest tokens are always visible
     // (truncate from the front with an ellipsis). Before any tokens we fall
@@ -799,20 +804,78 @@ function connect() {
    shortly after and the panel updates from there. We don't await the response;
    the actual completion is signalled via request_finished on the event stream.
    ============================================================================ */
-function submitPrompt() {
+/* SSE-streaming submit. Sends a POST to /generate/stream and consumes
+   text/event-stream frames line-by-line. Each token frame updates the
+   matching request row's preview live; the final `done` frame triggers
+   nothing here -- the scheduler's request_finished event on the WS
+   already handles row teardown / DONE styling.
+
+   Why not EventSource? EventSource only does GET. We need to POST a
+   JSON body, so we drive the stream ourselves via fetch + a
+   ReadableStream reader. */
+async function submitPrompt() {
   const prompt = document.getElementById('prompt').value.trim();
   const maxTokens = parseInt(document.getElementById('max-tokens').value, 10);
   if (!prompt || !maxTokens) return;
 
   const btn = document.getElementById('submit');
   btn.disabled = true;
-  fetch('/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, max_tokens: maxTokens }),
-  })
-    .catch(e => console.warn('generate failed', e))
-    .finally(() => { btn.disabled = false; });
+  try {
+    const resp = await fetch('/generate/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, max_tokens: maxTokens }),
+    });
+    if (!resp.ok || !resp.body) {
+      console.warn('generate/stream failed', resp.status);
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE framing: events separated by a blank line. Each event has
+      // one or more `data: ...` lines we care about. Split on \n\n.
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          let payload;
+          try { payload = JSON.parse(line.slice(6)); } catch { continue; }
+          handleStreamEvent(payload);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('generate/stream error', e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* Live per-token update of the request row's preview. We don't try to
+   maintain our own request map -- the WS event stream already populates
+   state.requests; we just nudge the preview's `last_token_str` so the
+   next render shows the streaming tail. */
+function handleStreamEvent(ev) {
+  if (ev.done) return;
+  const rid = ev.request_id;
+  // The WS request_admitted handler creates the row; before that fires
+  // we still need somewhere to accumulate the streamed prefix. Create
+  // a stub if needed -- the next WS event will fill in status / prompt.
+  let r = state.requests[rid];
+  if (!r) {
+    r = { request_id: rid, status: 'PREFILL', tokens: [] };
+    state.requests[rid] = r;
+  }
+  r.streamed_text = (r.streamed_text || '') + (ev.token_str || '');
+  renderRequests();
 }
 
 /* ---- Utility -------------------------------------------------------------- */
