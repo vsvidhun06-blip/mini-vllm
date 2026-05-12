@@ -7,3 +7,15 @@ __pycache__/
 *.egg-info/
 .DS_Store
 _backup_*/
+
+# Editor / build artefacts.
+*.tmp
+*.bak
+build/
+dist/
+.vscode/
+.idea/
+
+# Keep only .png screenshots under docs/screenshots/, no stray files.
+docs/screenshots/*
+!docs/screenshots/*.png
