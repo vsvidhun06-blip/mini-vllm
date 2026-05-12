@@ -194,3 +194,25 @@ def test_events_stream_admit_prefill_decode_finished(client) -> None:
         p = e["payload"]
         assert {"free_blocks", "used_blocks", "total_blocks"} <= set(p)
         assert p["free_blocks"] + p["used_blocks"] == p["total_blocks"]
+
+
+def test_visualiser_page_is_served(client) -> None:
+    """GET / returns the live-visualiser HTML page.
+
+    A smoke test: we don't try to render anything, just verify the file
+    is reachable, served with an HTML-ish content type, and contains the
+    two markers a visualiser page must have -- a DOCTYPE so the browser
+    treats it as standards-mode, and a `websocket` reference so we know
+    the JS that wires up the event stream is present.
+    """
+    resp = client.get("/")
+    assert resp.status_code == 200, resp.text
+    body = resp.text
+    assert "<!DOCTYPE html>" in body or "<!doctype html>" in body, (
+        "served page is missing a DOCTYPE; browsers would render it in "
+        "quirks mode"
+    )
+    assert "websocket" in body.lower(), (
+        "served page makes no mention of WebSocket; the live event "
+        "stream wiring is missing"
+    )

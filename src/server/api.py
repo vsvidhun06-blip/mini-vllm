@@ -54,16 +54,23 @@ import asyncio
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.engine.events import Event, EventBus
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 from src.engine.scheduler import ContinuousBatchScheduler
+
+# The visualiser is a single static HTML file sitting next to the server
+# package. We resolve it relative to this file so the path doesn't depend
+# on the current working directory. FileResponse re-reads on each request,
+# so edits to the file take effect without a server restart.
+VISUALISER_PATH = Path(__file__).resolve().parent.parent / "visualiser" / "index.html"
 
 
 # ---------------------------------------------------------------------------
@@ -255,58 +262,14 @@ def create_app() -> FastAPI:
 
     # -- GET / -------------------------------------------------------------
     #
-    # Placeholder page. Real visualiser is Day 9. For now we render a
-    # plain log: every event becomes a line of formatted JSON. Useful for
-    # smoke-testing the stream without the test suite.
-    @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
-        return _PLACEHOLDER_HTML
+    # Serve the live visualiser. The HTML/CSS/JS lives in one file under
+    # src/visualiser/index.html; FileResponse re-reads it on each request
+    # so the page can be iterated on without restarting the server.
+    @app.get("/")
+    def index() -> FileResponse:
+        return FileResponse(VISUALISER_PATH, media_type="text/html")
 
     return app
-
-
-# A self-contained HTML page. No build step. Connects to the WS and
-# appends each event as a <pre> entry. Real frontend (Day 9) replaces this.
-_PLACEHOLDER_HTML = """\
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>mini-vllm event stream (placeholder)</title>
-<style>
-  body { font: 13px/1.4 ui-monospace, monospace; margin: 1em; }
-  #log { white-space: pre-wrap; }
-  .ev { border-left: 3px solid #888; padding: 2px 8px; margin: 2px 0; }
-  .ev.request_admitted   { border-color: #2a7; }
-  .ev.request_finished   { border-color: #a72; }
-  .ev.decode_step        { border-color: #27a; }
-  .ev.pool_state         { border-color: #aaa; }
-  .ev.block_allocated    { border-color: #c52; }
-  .ev.block_freed        { border-color: #5c2; }
-</style>
-</head>
-<body>
-<h1>mini-vllm event stream</h1>
-<p>Connecting to <code>ws://</code>...<span id="status">opening</span></p>
-<div id="log"></div>
-<script>
-  const log = document.getElementById('log');
-  const status = document.getElementById('status');
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(proto + '://' + location.host + '/events');
-  ws.onopen  = () => status.textContent = 'open';
-  ws.onclose = () => status.textContent = 'closed';
-  ws.onmessage = (msg) => {
-    const ev = JSON.parse(msg.data);
-    const div = document.createElement('div');
-    div.className = 'ev ' + ev.event_type;
-    div.textContent = ev.event_type + '  ' + JSON.stringify(ev.payload);
-    log.prepend(div);
-  };
-</script>
-</body>
-</html>
-"""
 
 
 # Create the app at module load so `uvicorn src.server.api:app` works.
