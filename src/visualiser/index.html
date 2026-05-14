@@ -2,10 +2,16 @@
 <!--
   Mini-vLLM Live Visualiser.
 
-  Single file. No build pipeline. Plain JS + D3 from CDN. The page connects
-  to ws://<host>/events on load and reduces every incoming event into one
-  state object, then re-renders four panels: header (connection + throughput),
-  active requests, KV cache grid, event log.
+  Single file. No build pipeline. Plain JS + D3 + Chart.js from CDN.
+
+  Two independent live data sources:
+    * ws://<host>/events  -- the scheduler's structured event stream.
+      Reduced into one state object that re-renders the request list,
+      KV cache grid, header throughput, and event log.
+    * GET /metrics        -- the Prometheus scrape endpoint, polled
+      once a second. Parsed client-side and charted in the 4-panel
+      dashboard row (throughput, latency percentiles, prefix-cache hit
+      rate, pool utilization).
 
   Comment density is intentional -- this file is meant to be read in
   interviews to defend the architecture choices.
@@ -19,6 +25,9 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2300d4ff'/><text x='8' y='12' text-anchor='middle' font-family='monospace' font-weight='700' font-size='11' fill='%23001017'>M</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <!-- Chart.js powers the 4-panel /metrics dashboard row. UMD build,
+       pinned version so the page is reproducible. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     /* ---- Palette ---------------------------------------------------------
        Dark "systems console" aesthetic. Block colors come from request_id
@@ -168,6 +177,70 @@
       color: var(--text-dim);
     }
     .chip .v { color: var(--accent); font-weight: 600; }
+
+    /* ---- Metrics dashboard row -----------------------------------------
+       Four compact panels scraped from GET /metrics once a second.
+       Sits between the submit bar and the main two-panel grid. Each
+       panel is a fixed-height card; charts fill the space below an
+       inline title (no Chart.js legends -- the title IS the label). */
+    .chart-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .chart-panel {
+      background: var(--panel);
+      padding: 10px 14px 12px 14px;
+      height: 140px;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-title {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      white-space: nowrap;
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }
+    .chart-unit {
+      color: var(--text-mute);
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    /* The canvas fills the remaining card height. min-height:0 is the
+       flexbox incantation that lets a flex child actually shrink. */
+    .chart-canvas-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+    }
+    /* Prefix-cache hit rate is a single big number rather than a chart
+       -- a rate reads better as a number than as a 1px-tall line. */
+    .chart-bignum {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 40px;
+      font-weight: 600;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .chart-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-mute);
+      text-align: center;
+    }
 
     /* ---- Panels --------------------------------------------------------- */
     main {
@@ -402,6 +475,27 @@
     <input type="text" id="prompt" placeholder="Enter a prompt..." value="The capital of France is">
     <input type="number" id="max-tokens" value="30" min="1" max="200">
     <button id="submit">Submit</button>
+  </div>
+
+  <!-- Metrics dashboard: 4 panels polled from GET /metrics every 1s. -->
+  <div class="chart-row">
+    <div class="chart-panel">
+      <div class="chart-title">Throughput <span class="chart-unit">tok/s</span></div>
+      <div class="chart-canvas-wrap"><canvas id="chart-throughput"></canvas></div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">Latency <span class="chart-unit">p50 / p95 / p99 (s)</span></div>
+      <div class="chart-canvas-wrap"><canvas id="chart-latency"></canvas></div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">Prefix Cache Hit Rate</div>
+      <div class="chart-bignum" id="hitrate-num">&mdash;</div>
+      <div class="chart-sub">last 30s window</div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">Pool Utilization <span class="chart-unit">blocks</span></div>
+      <div class="chart-canvas-wrap"><canvas id="chart-pool"></canvas></div>
+    </div>
   </div>
 
   <main>
@@ -878,6 +972,260 @@ function handleStreamEvent(ev) {
   renderRequests();
 }
 
+/* =============================================================================
+   METRICS DASHBOARD
+   ============================================================================
+   The 4-panel chart row is fed by GET /metrics, not the WebSocket. /metrics
+   returns the Prometheus text exposition format -- the industry-standard
+   scrape format, so this same endpoint could be pointed at a real Prometheus
+   server or Grafana with zero server changes. The visualiser is "just another
+   scraper": fetch once a second, parse the handful of series we chart.
+   ============================================================================= */
+
+/* ---- Tiny Prometheus text-format parser -----------------------------------
+   Handles the subset we emit: `name{labels} value` and `name value` lines.
+   Skips `# HELP` / `# TYPE` comment lines. Returns
+     { metricName: [ { labels: {...}, value: Number }, ... ] }
+   Histogram series (`name_bucket`, `name_sum`, `name_count`) come through as
+   ordinary entries -- the quantile helper below stitches the buckets back. */
+function parseProm(text) {
+  const out = {};
+  const lineRe = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+(.+)$/;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line[0] === '#') continue;
+    const m = line.match(lineRe);
+    if (!m) continue;
+    const [, name, labelStr, valStr] = m;
+    const labels = {};
+    if (labelStr) {
+      // strip the surrounding {} then split on commas; values are quoted.
+      for (const part of labelStr.slice(1, -1).split(',')) {
+        const eq = part.indexOf('=');
+        if (eq === -1) continue;
+        labels[part.slice(0, eq).trim()] =
+          part.slice(eq + 1).trim().replace(/^"|"$/g, '');
+      }
+    }
+    (out[name] = out[name] || []).push({ labels, value: parseFloat(valStr) });
+  }
+  return out;
+}
+
+/* Single scalar lookup. With labelMatch, returns the first series whose
+   labels are a superset of labelMatch; without, the first series. */
+function promValue(parsed, name, labelMatch) {
+  const series = parsed[name];
+  if (!series || !series.length) return null;
+  if (!labelMatch) return series[0].value;
+  for (const s of series) {
+    if (Object.entries(labelMatch).every(([k, v]) => s.labels[k] === v)) {
+      return s.value;
+    }
+  }
+  return null;
+}
+
+/* Estimate a quantile from a Prometheus histogram's cumulative buckets.
+   Same algorithm Prometheus' histogram_quantile() uses: find the bucket
+   the target rank falls in, linearly interpolate within it. */
+function histQuantile(parsed, name, q) {
+  const raw = parsed[name + '_bucket'];
+  if (!raw || !raw.length) return 0;
+  const buckets = raw
+    .map(s => ({
+      le: s.labels.le === '+Inf' ? Infinity : parseFloat(s.labels.le),
+      count: s.value,
+    }))
+    .sort((a, b) => a.le - b.le);
+  const total = buckets[buckets.length - 1].count;
+  if (total === 0) return 0;
+  const target = q * total;
+  let prevCount = 0, prevLe = 0;
+  for (const b of buckets) {
+    if (b.count >= target) {
+      if (b.le === Infinity) return prevLe;        // open-ended top bucket
+      const span = b.count - prevCount || 1;
+      return prevLe + ((target - prevCount) / span) * (b.le - prevLe);
+    }
+    prevCount = b.count;
+    prevLe = b.le;
+  }
+  return prevLe;
+}
+
+/* ---- Dashboard state + charts --------------------------------------------- */
+const DASH_POINTS = 60;          // 60 samples at 1s = a 60s rolling window
+const HITRATE_WINDOW_MS = 30000; // hit rate is a delta over the last 30s
+
+const dash = {
+  // previous scrape, for computing per-second deltas
+  prev: null,                    // { t, tpotCount }
+  // [{ t, hits, misses }] kept for HITRATE_WINDOW_MS
+  hitRateWindow: [],
+};
+
+let throughputChart = null;
+let latencyChart = null;
+let poolChart = null;
+
+/* Shared axis styling: transparent background, subtle grid, mono ticks,
+   no legend (the panel title is the label). */
+function chartBaseOptions(yLabelCallback) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: {
+      x: { display: false, grid: { display: false } },
+      y: {
+        beginAtZero: true,
+        grid: { color: '#1a1a1a' },
+        border: { display: false },
+        ticks: {
+          color: '#888888',
+          font: { family: "'JetBrains Mono', monospace", size: 11 },
+          maxTicksLimit: 4,
+          callback: yLabelCallback,
+        },
+      },
+    },
+    elements: { point: { radius: 0 } },
+  };
+}
+
+function initCharts() {
+  if (typeof Chart === 'undefined') {
+    // CDN blocked / offline. The rest of the page still works; the
+    // dashboard panels just stay empty.
+    console.warn('Chart.js failed to load; metrics dashboard disabled');
+    return;
+  }
+
+  throughputChart = new Chart(document.getElementById('chart-throughput'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      data: [], borderColor: '#00d4ff', borderWidth: 1.5,
+      fill: true, backgroundColor: 'rgba(0,212,255,0.08)', tension: 0.25,
+    }] },
+    options: chartBaseOptions(v => v),
+  });
+
+  latencyChart = new Chart(document.getElementById('chart-latency'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { data: [], borderColor: '#4caf50', borderWidth: 1.5, tension: 0.25 }, // p50
+      { data: [], borderColor: '#ffaa00', borderWidth: 1.5, tension: 0.25 }, // p95
+      { data: [], borderColor: '#e74c3c', borderWidth: 1.5, tension: 0.25 }, // p99
+    ] },
+    options: chartBaseOptions(v => Number(v).toFixed(2)),
+  });
+
+  poolChart = new Chart(document.getElementById('chart-pool'), {
+    type: 'bar',
+    data: { labels: ['pool'], datasets: [
+      { label: 'used',   data: [0], backgroundColor: '#e74c3c' },
+      { label: 'cached', data: [0], backgroundColor: '#ffaa00' },
+      { label: 'free',   data: [0], backgroundColor: '#2a2a2a' },
+    ] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: true } },
+      scales: {
+        x: {
+          stacked: true, beginAtZero: true,
+          grid: { color: '#1a1a1a' }, border: { display: false },
+          ticks: {
+            color: '#888888',
+            font: { family: "'JetBrains Mono', monospace", size: 11 },
+            maxTicksLimit: 5,
+          },
+        },
+        y: { stacked: true, display: false },
+      },
+    },
+  });
+}
+
+/* Push one sample onto a rolling-window line chart (single or multi-line). */
+function pushSamples(chart, values) {
+  if (!chart) return;
+  chart.data.labels.push('');
+  values.forEach((v, i) => chart.data.datasets[i].data.push(v));
+  if (chart.data.labels.length > DASH_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(ds => ds.data.shift());
+  }
+  chart.update('none');
+}
+
+/* One scrape -> one update of all four panels. */
+function updateDashboard(parsed) {
+  const now = Date.now();
+
+  // -- Throughput: decode tokens/sec from the tpot_seconds histogram's
+  //    _count delta. tpot_seconds is observed once per decode token, so
+  //    the count delta over the scrape interval IS tokens/sec.
+  const tpotCount = promValue(parsed, 'tpot_seconds_count') ?? 0;
+  if (dash.prev) {
+    const dt = (now - dash.prev.t) / 1000;
+    const tps = dt > 0 ? Math.max(0, (tpotCount - dash.prev.tpotCount) / dt) : 0;
+    pushSamples(throughputChart, [tps]);
+  }
+
+  // -- Latency: p50/p95/p99 of end-to-end latency, estimated from the
+  //    e2e_latency_seconds histogram buckets.
+  pushSamples(latencyChart, [
+    histQuantile(parsed, 'e2e_latency_seconds', 0.50),
+    histQuantile(parsed, 'e2e_latency_seconds', 0.95),
+    histQuantile(parsed, 'e2e_latency_seconds', 0.99),
+  ]);
+
+  // -- Prefix cache hit rate over the last 30s. The counters are
+  //    cumulative; we diff against the oldest sample still in window.
+  const hits = promValue(parsed, 'prefix_cache_hits_total') ?? 0;
+  const misses = promValue(parsed, 'prefix_cache_misses_total') ?? 0;
+  dash.hitRateWindow.push({ t: now, hits, misses });
+  while (dash.hitRateWindow.length > 1 &&
+         dash.hitRateWindow[0].t < now - HITRATE_WINDOW_MS) {
+    dash.hitRateWindow.shift();
+  }
+  const oldest = dash.hitRateWindow[0];
+  const dHits = hits - oldest.hits;
+  const dMisses = misses - oldest.misses;
+  const denom = dHits + dMisses;
+  const el = document.getElementById('hitrate-num');
+  if (el) {
+    el.textContent = denom > 0
+      ? Math.round((dHits / denom) * 100) + '%'
+      : '—';   // em-dash when nothing happened in the window
+  }
+
+  // -- Pool utilization: live stacked bar (used / cached / free).
+  if (poolChart) {
+    poolChart.data.datasets[0].data = [promValue(parsed, 'pool_blocks_used') ?? 0];
+    poolChart.data.datasets[1].data = [promValue(parsed, 'pool_blocks_cached') ?? 0];
+    poolChart.data.datasets[2].data = [promValue(parsed, 'pool_blocks_free') ?? 0];
+    poolChart.update('none');
+  }
+
+  dash.prev = { t: now, tpotCount };
+}
+
+async function pollMetrics() {
+  try {
+    const resp = await fetch('/metrics');
+    if (!resp.ok) return;
+    updateDashboard(parseProm(await resp.text()));
+  } catch (e) {
+    // Transient -- next tick retries. Don't spam the console.
+  }
+}
+
 /* ---- Utility -------------------------------------------------------------- */
 function escapeHtml(s) {
   return String(s ?? '')
@@ -902,6 +1250,11 @@ document.getElementById('event-filter').addEventListener('change', (e) => {
 // Initial paint, then open the socket.
 render();
 connect();
+
+// Metrics dashboard: build the charts, then scrape /metrics every 1s.
+initCharts();
+pollMetrics();
+setInterval(pollMetrics, 1000);
 
 // Smooth-update the throughput value even when no events fire (so the
 // 5-second average decays visibly toward zero after a burst).

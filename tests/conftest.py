@@ -98,6 +98,7 @@ def server_engine(my_model, tokenizer):
     from src.engine.events import EventBus
     from src.engine.scheduler import ContinuousBatchScheduler
     from src.server import api
+    from src.server import metrics
 
     if api._scheduler is not None:
         yield
@@ -106,6 +107,9 @@ def server_engine(my_model, tokenizer):
     api._tokenizer = tokenizer
     api._event_bus = EventBus()
     api._event_bus.subscribe(api._on_bus_event)
+    # Mirror _init_engine: the metrics collector is a bus subscriber.
+    # Wiring it here keeps test_metrics.py exercising the real path.
+    api._event_bus.subscribe(metrics.collector.on_event)
     api._scheduler = ContinuousBatchScheduler(
         my_model,
         max_batch_size=8,

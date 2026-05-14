@@ -349,6 +349,18 @@ class PagedKVCache:
         """
         return self._blocks[request_id]
 
+    def num_shared_blocks(self) -> int:
+        """Count physical blocks currently shared by 2+ requests.
+
+        A block with ref_count >= 2 is one the prefix cache is actively
+        deduplicating -- a single physical block standing in for the
+        same K/V across multiple requests. This is the "prefix caching
+        is doing work" signal the metrics layer reports as
+        POOL_BLOCKS_CACHED. Blocks with ref_count == 1 are uniquely
+        owned; blocks with no ref_count entry are free.
+        """
+        return sum(1 for c in self.ref_count.values() if c >= 2)
+
 
 class PagedRequestCache:
     """Per-request view over the pool.

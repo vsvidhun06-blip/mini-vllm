@@ -65,13 +65,15 @@ from typing import Any, AsyncIterator
 
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
 from src.engine.device import DEVICE
 from src.engine.events import Event, EventBus
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 from src.engine.scheduler import ContinuousBatchScheduler
+from src.server import metrics
 
 # The visualiser is a single static HTML file. FileResponse re-reads on
 # each request so iteration on the page doesn't need a server restart.
@@ -202,6 +204,12 @@ def _init_engine() -> None:
 
     _event_bus = EventBus()
     _event_bus.subscribe(_on_bus_event)
+    # The metrics collector is just another bus subscriber. Subscribing
+    # here, inside the idempotent _init_engine guard, means it is wired
+    # exactly once per process. (The test fixture in conftest.py builds
+    # the engine by hand and subscribes the collector there for the
+    # same reason.)
+    _event_bus.subscribe(metrics.collector.on_event)
 
     _scheduler = ContinuousBatchScheduler(
         model,
@@ -372,6 +380,18 @@ def create_app() -> FastAPI:
             pass
         finally:
             _event_bus.unsubscribe(_push)
+
+    # -- GET /metrics ------------------------------------------------------
+    #
+    # Prometheus text exposition format. generate_latest() walks the
+    # default registry (every instrument in src/server/metrics.py is
+    # registered there on creation) and renders the standard scrape
+    # body. CONTENT_TYPE_LATEST is the format's canonical content type
+    # -- a real Prometheus server or Grafana scrapes this unchanged.
+    @app.get("/metrics")
+    def get_metrics() -> Response:
+        _init_engine()
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     # -- GET / -------------------------------------------------------------
     @app.get("/")

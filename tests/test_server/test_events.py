@@ -188,9 +188,10 @@ def test_visualiser_page_is_served(client) -> None:
 
     A smoke test: we don't try to render anything, just verify the file
     is reachable, served with an HTML-ish content type, and contains the
-    two markers a visualiser page must have -- a DOCTYPE so the browser
-    treats it as standards-mode, and a `websocket` reference so we know
-    the JS that wires up the event stream is present.
+    markers a visualiser page must have -- a DOCTYPE so the browser
+    treats it as standards-mode, a `websocket` reference for the event
+    stream wiring, and (Day 13) `chart.js` + `metrics` so we know the
+    4-panel /metrics dashboard is wired in.
     """
     resp = client.get("/")
     assert resp.status_code == 200, resp.text
@@ -202,4 +203,13 @@ def test_visualiser_page_is_served(client) -> None:
     assert "websocket" in body.lower(), (
         "served page makes no mention of WebSocket; the live event "
         "stream wiring is missing"
+    )
+    low = body.lower()
+    assert "chart.js" in low, (
+        "served page makes no mention of Chart.js; the metrics dashboard "
+        "charts are missing"
+    )
+    assert "metrics" in low, (
+        "served page makes no mention of /metrics; the dashboard polling "
+        "wiring is missing"
     )

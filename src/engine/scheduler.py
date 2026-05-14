@@ -553,12 +553,16 @@ class ContinuousBatchScheduler:
 
         # --- 5. Pool state snapshot ---------------------------------------
         # One event per step, AFTER eviction has freed blocks. The
-        # visualiser polls this for the memory bar.
+        # visualiser polls this for the memory bar; the metrics layer
+        # turns it into the POOL_BLOCKS_* gauges. cached_blocks is the
+        # count of physically shared blocks (ref_count >= 2) -- the
+        # prefix cache's live footprint.
         free = len(self.pool._free_blocks)  # noqa: SLF001 -- friendly access
         self._emit(events.pool_state(
             free_blocks=free,
             used_blocks=self.pool.num_blocks - free,
             total_blocks=self.pool.num_blocks,
+            cached_blocks=self.pool.num_shared_blocks(),
         ))
 
         return emitted

@@ -201,13 +201,28 @@ def request_finished(
     )
 
 
-def pool_state(free_blocks: int, used_blocks: int, total_blocks: int) -> Event:
+def pool_state(
+    free_blocks: int,
+    used_blocks: int,
+    total_blocks: int,
+    cached_blocks: int = 0,
+) -> Event:
+    """Snapshot of the KV-cache pool, emitted once per scheduler step.
+
+    cached_blocks counts physically SHARED blocks (ref_count >= 2) --
+    the blocks the prefix cache is actively deduplicating. It is a
+    subset of used_blocks (used_blocks is everything not free), so a
+    consumer wanting "uniquely owned" blocks computes
+    used_blocks - cached_blocks. Defaults to 0 so pre-Day-13 callers
+    and tests still construct valid events.
+    """
     return Event(
         event_type="pool_state",
         payload={
             "free_blocks": free_blocks,
             "used_blocks": used_blocks,
             "total_blocks": total_blocks,
+            "cached_blocks": cached_blocks,
         },
     )
 
