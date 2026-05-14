@@ -328,16 +328,43 @@ class MultiHeadAttention(nn.Module):
         k = k.repeat_interleave(self.group_size, dim=1)
         v = v.repeat_interleave(self.group_size, dim=1)
 
-        # 6) SDPA. Causal mask flip:
-        #    - Prefill (q_len > 1): causal triangle is needed so position i
-        #      can't peek at position i+1.
-        #    - Decode  (q_len == 1): the single new query sits at the right
-        #      end of the (1, S_total) attention matrix and naturally sees
-        #      every cached key (all in its past). is_causal=True would
-        #      use SDPA's upper-left-aligned mask and zero out every column
-        #      except column 0 -- catastrophically wrong.
-        is_causal = S > 1
-        attn_out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        # 6) SDPA. Causal mask cases:
+        #
+        #    The previously-cached K has length pos_offset; the new k
+        #    (S rows) was just appended; total K length is pos_offset + S.
+        #    Q has S rows whose absolute positions are
+        #    [pos_offset, pos_offset + S).
+        #
+        #    Three regimes:
+        #      * Decode (S == 1): the one new query at the END of K
+        #        attends to every past key. No mask needed.
+        #      * Full prefill (S > 1 and pos_offset == 0): Q and K are
+        #        the same length, standard upper-left causal triangle
+        #        applies. is_causal=True is correct.
+        #      * SLICED prefill (S > 1 and pos_offset > 0): this is the
+        #        prefix-cache path. Q has fewer rows than K. SDPA's
+        #        built-in is_causal mask is upper-LEFT aligned -- it
+        #        would force row 0 of Q to attend only to column 0 of K,
+        #        which is catastrophically wrong (we want row 0 attending
+        #        to columns 0..pos_offset). We build the mask explicitly:
+        #        row i (absolute position pos_offset + i) attends to
+        #        columns 0..(pos_offset + i).
+        if S == 1:
+            attn_mask = None
+            is_causal = False
+        elif pos_offset == 0:
+            attn_mask = None
+            is_causal = True
+        else:
+            S_total = k.shape[2]
+            q_pos = torch.arange(pos_offset, pos_offset + S, device=q.device)
+            k_pos = torch.arange(S_total, device=q.device)
+            # Broadcast to (S, S_total). True == attend.
+            attn_mask = k_pos.unsqueeze(0) <= q_pos.unsqueeze(1)
+            is_causal = False
+        attn_out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, is_causal=is_causal,
+        )
         # attn_out: (B, NQ, S, D) -- still only S queries on the output side.
 
         # 7) Merge heads back: (B, NQ, S, D) -> (B, S, NQ*D) -> (B, S, H).

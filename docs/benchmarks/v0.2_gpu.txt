@@ -1,0 +1,24 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Device: cuda  dtype: torch.float32
+  GPU: NVIDIA GeForce RTX 4060 Laptop GPU
+  VRAM: 8.59 GB
+  TF32 matmul: off (preserve fp32 parity)
+
+Loading TinyLlama...
+Warmup...
+
+Solo (sequential): 5.25s
+  128 tokens total across 4 prompts
+  24.4 tokens/sec aggregate
+  41.0 ms / token avg
+
+Scheduler (ample blocks=64): 2.87s  steps=31
+  128 tokens total
+  44.6 tokens/sec aggregate
+  92.5 ms / step avg
+  speedup vs solo: 1.83x
+
+Scheduler (tight blocks=6, forces admission control): 3.84s  steps=62
+  128 tokens total
+  33.3 tokens/sec aggregate
+  speedup vs solo: 1.37x

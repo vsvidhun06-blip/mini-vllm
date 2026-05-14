@@ -94,6 +94,12 @@ class Request:
     status: RequestStatus = RequestStatus.WAITING
     generated_token_ids: list[int] = field(default_factory=list)
     cache: PagedRequestCache | None = None      # allocated at admission
+    # How many tokens of the prompt are already in the cache from a
+    # prefix-cache hit at admit time. The prefill forward pass skips
+    # those tokens (slices prompt_ids[:, hit_boundary:]) and the
+    # per-layer seq_len is pre-seeded to this value. 0 means no hit
+    # (or prefix caching disabled); behaves identically to pre-Day-12.
+    prefill_hit_boundary: int = 0
 
     @property
     def last_token_id(self) -> int:
@@ -122,6 +128,7 @@ class ContinuousBatchScheduler:
         event_bus: "EventBus | None" = None,
         token_decoder: Callable[[int], str] | None = None,
         token_emitter: Callable[[str, int, str, int], None] | None = None,
+        enable_prefix_cache: bool = True,
     ) -> None:
         """
         Args:
@@ -153,6 +160,14 @@ class ContinuousBatchScheduler:
                 stays asyncio-unaware; bridging happens in the callback
                 via `loop.call_soon_threadsafe`. None means no
                 per-token push (existing engine tests are unaffected).
+            enable_prefix_cache: when True (default), the prefill path
+                hashes each full prompt block and asks the pool to
+                share with any previously-cached identical block.
+                Tokens covered by hits skip the prefill forward
+                compute. When False, every prefill block is allocated
+                fresh -- byte-identical to pre-Day-12 behaviour. The
+                parity tests construct schedulers with both settings
+                and assert identical outputs.
 
         Two independent budgets:
             * max_batch_size: how many requests can run in one forward pass.
@@ -167,6 +182,7 @@ class ContinuousBatchScheduler:
         self.event_bus = event_bus
         self.token_decoder = token_decoder
         self.token_emitter = token_emitter
+        self.enable_prefix_cache = enable_prefix_cache
 
         # The KV pool. One big tensor shared across all requests. The pool
         # also gets the event_bus so block_allocated / block_freed fire
@@ -188,6 +204,7 @@ class ContinuousBatchScheduler:
             dtype=dtype,
             device=device,
             event_bus=event_bus,
+            enable_prefix_cache=enable_prefix_cache,
         )
 
         self.waiting: deque[Request] = deque()
@@ -271,6 +288,71 @@ class ContinuousBatchScheduler:
         total = (prompt_len + r.max_new_tokens + bs - 1) // bs
         return prefill, total
 
+    def _compute_block_hashes(
+        self,
+        prompt_ids: torch.Tensor,
+        n_prefill_blocks: int,
+    ) -> list[int | None]:
+        """Build the per-prefill-block hash list for prefix caching.
+
+        Each entry is either an int (this block is eligible for sharing
+        and will be looked up in the pool's hash_to_block) or None
+        (force fresh allocation -- partial-tail block, or the last
+        full block of an exact-multiple prompt where prefill needs
+        a writable slot).
+
+        Hash chain (matches the design we agreed on):
+            block_hash_i = hash((
+                prev_block_hash,    # 0 for block 0; the chain
+                tuple(tokens),      # the 16 tokens in this block
+                start_position,     # explicit position, redundant
+                                    # given the chain but kept for
+                                    # belt-and-suspenders safety
+            ))
+
+        Shareability rule:
+            n_full = prompt_len // block_size
+            max_shareable = n_full - (1 if prompt_len % bs == 0 else 0)
+            max_shareable = max(0, max_shareable)
+        We force the last full block to be fresh when the prompt has no
+        partial tail, otherwise prefill forward has no token to run on
+        (no Q -> no next-token logits) AND no fresh block to write its
+        own K/V into.
+
+        When prefix caching is disabled at the scheduler level, this
+        returns all-None and the pool's allocation path takes the
+        pre-Day-12 fast lane.
+        """
+        if not self.enable_prefix_cache:
+            return [None] * n_prefill_blocks
+
+        bs = self.block_size
+        prompt_len = int(prompt_ids.shape[1])
+        n_full = prompt_len // bs
+        has_partial = (prompt_len % bs) != 0
+        max_shareable = n_full - (0 if has_partial else 1)
+        max_shareable = max(0, max_shareable)
+
+        # Pull the tokens once on the CPU side. tolist() is the cheap way
+        # to get hashable Python ints from a torch tensor (we don't want
+        # to hash the tensor itself -- equality semantics differ).
+        ids_list: list[int] = prompt_ids[0].detach().cpu().tolist()
+
+        hashes: list[int | None] = []
+        prev_hash = 0  # sentinel: block-0 chains from this
+        for i in range(n_prefill_blocks):
+            if i < max_shareable:
+                start = i * bs
+                chunk = tuple(ids_list[start:start + bs])
+                prev_hash = hash((prev_hash, chunk, start))
+                hashes.append(prev_hash)
+            else:
+                # Either the partial tail (last entry of a non-aligned
+                # prompt) or the forced-fresh last full block. No hash
+                # recorded, no sharing.
+                hashes.append(None)
+        return hashes
+
     # ---- Core loop ----------------------------------------------------
 
     def step(self) -> list[tuple[str, int]]:
@@ -312,34 +394,81 @@ class ContinuousBatchScheduler:
                 break
 
             self.waiting.popleft()
-            self.pool.admit_request(
+            # Compute per-prefill-block hashes. With the chained hash,
+            # once a block is a "fresh" slot (None) or the lookup misses
+            # the cache, every subsequent block is also a miss (its
+            # chain history is unique). So the run of hits is always a
+            # prefix of the prefill block list -- which is exactly what
+            # we need for slicing the prefill forward pass below.
+            prefill_block_hashes = self._compute_block_hashes(
+                r.prompt_ids, prefill_blocks,
+            )
+            cached_blocks = self.pool.admit_request(
                 request_id=r.request_id,
                 prefill_blocks_needed=prefill_blocks,
                 total_blocks_needed=total_blocks,
+                prefill_block_hashes=prefill_block_hashes,
             )
+            # hit_boundary: how many tokens of the prompt are already
+            # cached. Because hits form a contiguous prefix of the
+            # prefill block list (chained-hash property), the boundary
+            # is just cached_blocks * block_size. Prefill forward will
+            # run on prompt_ids[:, hit_boundary:] and the model's RoPE
+            # offset is read from the per-request cache's seq_len.
+            hit_boundary = cached_blocks * self.block_size
             r.cache = PagedRequestCache(
                 pool=self.pool,
                 request_id=r.request_id,
                 num_layers=self.num_layers,
             )
+            if hit_boundary > 0:
+                # Pre-seed the per-layer seq_lens so that the prefill
+                # forward sees the right RoPE offset AND appends K/V
+                # only for the suffix. The K/V for positions
+                # [0, hit_boundary) was written to these same physical
+                # blocks by an earlier request and is still in the
+                # pool tensor -- cache.get() at SDPA time picks it up
+                # via the block table.
+                for layer_idx in range(self.num_layers):
+                    r.cache._seq_lens[layer_idx] = hit_boundary
+            # Stash the boundary on the request so the prefill phase
+            # can slice without recomputing it.
+            r.prefill_hit_boundary = hit_boundary
             r.status = RequestStatus.PREFILL
             self.active.append(r)
             self._emit(events.request_admitted(
                 request_id=r.request_id,
                 prompt=r.prompt_text or "",
                 prompt_len=int(r.prompt_ids.shape[1]),
+                cached_blocks=cached_blocks,
+                total_prefill_blocks=prefill_blocks,
             ))
 
         # --- 2. Prefill ----------------------------------------------------
         prefill_reqs = [r for r in self.active if r.status is RequestStatus.PREFILL]
         for r in prefill_reqs:
             prompt_len = int(r.prompt_ids.shape[1])
+            # Prefix-cache slicing: when admit-time bound shared blocks
+            # to logical positions [0, hit_boundary), the K/V for those
+            # tokens is already in the pool and we run forward on the
+            # SUFFIX only. RoPE positions come out right because we
+            # pre-seeded the cache's per-layer seq_len to hit_boundary
+            # at admit time, so the model treats this forward as
+            # "continue from position hit_boundary". When hit_boundary
+            # is 0 (caching off, no hits, or first request to compute
+            # this prefix), this collapses to the full-prompt forward
+            # pass we did pre-Day-12.
+            hit_boundary = r.prefill_hit_boundary
             self._emit(events.prefill_started(
                 request_id=r.request_id,
                 num_tokens=prompt_len,
             ))
+            forward_input = (
+                r.prompt_ids if hit_boundary == 0
+                else r.prompt_ids[:, hit_boundary:]
+            )
             with torch.no_grad():
-                logits = self.model(r.prompt_ids, kv_cache=r.cache)  # (1, S_prompt, V)
+                logits = self.model(forward_input, kv_cache=r.cache)  # (1, S_suffix, V)
             next_id = int(torch.argmax(logits[0, -1, :]))
             r.generated_token_ids.append(next_id)
             emitted.append((r.request_id, next_id))

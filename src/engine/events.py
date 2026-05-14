@@ -90,10 +90,30 @@ class Event:
 # ---------------------------------------------------------------------------
 
 
-def request_admitted(request_id: str, prompt: str, prompt_len: int) -> Event:
+def request_admitted(
+    request_id: str,
+    prompt: str,
+    prompt_len: int,
+    cached_blocks: int = 0,
+    total_prefill_blocks: int = 0,
+) -> Event:
+    """Request entered the active batch.
+
+    cached_blocks / total_prefill_blocks expose the prefix-cache hit
+    rate per-request: consumers compute `cached_blocks /
+    total_prefill_blocks` for a per-request rate, or aggregate across
+    admissions for an engine-wide rate. The fields default to 0 so
+    callers that don't care (and pre-Day-12 tests) keep working.
+    """
     return Event(
         event_type="request_admitted",
-        payload={"request_id": request_id, "prompt": prompt, "prompt_len": prompt_len},
+        payload={
+            "request_id": request_id,
+            "prompt": prompt,
+            "prompt_len": prompt_len,
+            "cached_blocks": cached_blocks,
+            "total_prefill_blocks": total_prefill_blocks,
+        },
     )
 
 
@@ -132,13 +152,27 @@ def decode_step(step_idx: int, batch: list[tuple[str, int, str]]) -> Event:
     )
 
 
-def block_allocated(request_id: str, physical_block_idx: int, logical_idx: int) -> Event:
+def block_allocated(
+    request_id: str,
+    physical_block_idx: int,
+    logical_idx: int,
+    shared: bool = False,
+) -> Event:
+    """A logical block at `logical_idx` was bound to a physical block.
+
+    `shared=True` means this binding is a prefix-cache hit -- the
+    physical block already held K/V from a prior request and we
+    incremented its refcount instead of pulling from the free pool.
+    Default False so existing call sites (decode-time JIT growth) keep
+    their previous semantics without naming the new field.
+    """
     return Event(
         event_type="block_allocated",
         payload={
             "request_id": request_id,
             "physical_block_idx": physical_block_idx,
             "logical_idx": logical_idx,
+            "shared": shared,
         },
     )
 

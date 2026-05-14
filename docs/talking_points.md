@@ -141,3 +141,36 @@ A: Yes, ~12 tokens/sec on a laptop CPU. v0.1's point is correctness and
 architecture, not throughput. fp32 makes the HF parity tests work at
 `atol=1e-4` without dtype gymnastics. v0.2 moves to GPU with CUDA SDPA;
 requirements already pin `torch==2.5.1+cu121`.
+
+## GPU batching intuition
+
+**Q: Why does the batching speedup drop from 3.10x on CPU to 1.89x on GPU?**
+A: On CPU, solo decode is **matmul-bound** — each step has to stream the
+1.1B weights from RAM through the BLAS kernels for a single row of work,
+and that bandwidth is the bottleneck. Batching N requests through one
+forward pass amortises the weight load across N rows, so the speedup
+tracks N closely (3.10x for 4 requests).
+
+On GPU with a 1.1B model, solo decode is **bandwidth- and launch-overhead-
+bound** rather than matmul-bound — the SMs are mostly idle waiting on
+HBM reads and kernel launch latency, not saturating arithmetic. Single-row
+matmul barely uses the tensor cores. Batching 4 requests does help, but
+there's less waste for it to amortise, so the speedup compresses to 1.89x.
+The absolute throughput is still way higher (~12 tok/s per request batched
+on GPU vs ~3 tok/s per request batched on CPU); the speedup *ratio* just
+looks less dramatic because solo on GPU is already much faster than solo
+on CPU.
+
+This is why production inference engines focus on KV-cache bandwidth
+(PagedAttention's whole point — fewer cache-memory copies per token) and
+on reducing launch overhead (CUDA graphs, fused FlashAttention kernels,
+torch.compile) rather than chasing larger batch sizes for their own sake.
+Doubling the batch size when you're already bandwidth-bound buys you very
+little; halving the per-token bandwidth or fusing the per-step kernel
+launches buys you a lot.
+
+**Q: What's the canonical v0.2 numbers source?**
+A: `docs/benchmarks/v0.2_gpu.txt` is the raw output of
+`scripts/bench_gpu.py` on the RTX 4060 Laptop GPU. It's the source of
+truth for the v0.2 README rewrite. Re-running the script on a different
+GPU and committing the new file is how those numbers should be refreshed.

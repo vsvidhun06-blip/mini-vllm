@@ -1,0 +1,36 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Device: cuda  dtype: torch.float32
+  GPU: NVIDIA GeForce RTX 4060 Laptop GPU
+  VRAM: 8.59 GB
+  TF32 matmul: off (preserve fp32 parity)
+
+Loading TinyLlama...
+System-prompt length: 129 tokens
+Full prompt length (with first user query): 146 tokens
+Block size: 16. Full blocks in system prompt: 8
+
+Warmup (solo)...
+Warmup (sliced prefill)...
+
+=== Prefix cache OFF ===
+  req-0: prefill=   63.4 ms  cached_blocks=0/10
+  req-1: prefill=   65.6 ms  cached_blocks=0/10
+  req-2: prefill=   58.3 ms  cached_blocks=0/9
+  req-3: prefill=   68.1 ms  cached_blocks=0/9
+  total wall time: 0.70s
+
+=== Prefix cache ON ===
+  req-0: prefill=   58.2 ms  cached_blocks=0/10
+  req-1: prefill=   31.3 ms  cached_blocks=8/10
+  req-2: prefill=   32.1 ms  cached_blocks=8/9
+  req-3: prefill=   26.6 ms  cached_blocks=8/9
+  total wall time: 0.60s
+
+=== Per-request prefill speedup (cache OFF / ON) ===
+  req-0:    63.4 ms ->    58.2 ms  ( 1.09x)
+  req-1:    65.6 ms ->    31.3 ms  ( 2.09x)
+  req-2:    58.3 ms ->    32.1 ms  ( 1.82x)
+  req-3:    68.1 ms ->    26.6 ms  ( 2.56x)
+
+Aggregate prefix-cache hit rate: 24/38 prefill blocks (63.2%)
+End-to-end wall: OFF=0.70s  ON=0.60s

@@ -82,6 +82,19 @@ class PagedKVCache:
     Carries the K/V tensors and tracks which physical block indices are
     free, which are allocated to which request, and how many remain
     reserved for in-flight requests' future decode steps.
+
+    Day 12 addition: prefix caching via reference counting.
+
+      Multiple requests can point at the SAME physical block when their
+      prompts share an aligned prefix. Sharing is content-addressable:
+      a block's hash is a chain of (prev_block_hash, tokens, start_pos)
+      so two blocks collide only if they sit at the same logical index
+      with the same full history. The shared block is K/V-immutable
+      after prefill -- decode appends only ever touch each request's
+      own freshly-allocated tail block. Refcount is incremented when
+      a hit binds an existing block to a new request, and decremented
+      on free; when it hits zero the block goes back to the free pool
+      AND its hash entries are evicted (no LRU retention in v0.2).
     """
 
     def __init__(
@@ -94,6 +107,7 @@ class PagedKVCache:
         dtype: torch.dtype = torch.float32,
         device: torch.device | str = "cpu",
         event_bus: "EventBus | None" = None,
+        enable_prefix_cache: bool = True,
     ) -> None:
         self.num_layers = num_layers
         self.num_blocks = num_blocks
@@ -104,6 +118,12 @@ class PagedKVCache:
         # short-circuit. Engine tests run without a bus and see no behavior
         # change.
         self.event_bus = event_bus
+        # Master switch for prefix caching. When False, admit_request
+        # ignores any hashes the caller passes and allocates every
+        # prefill block fresh -- restoring the pre-Day-12 behavior
+        # byte-for-byte. The parity tests construct two schedulers
+        # (one on, one off) and compare outputs across runs.
+        self.enable_prefix_cache = enable_prefix_cache
 
         # The big pool tensors. See module header for layout rationale.
         shape = (num_layers, num_blocks, block_size, num_kv_heads, head_dim)
@@ -123,6 +143,19 @@ class PagedKVCache:
         #              for in the budget but not yet physically allocated)
         self._blocks: dict[str, list[int]] = {}
         self._reserved: dict[str, int] = {}
+
+        # Prefix-cache bookkeeping. Keys/values are physical block indices
+        # and content hashes; refcount covers ALL allocated blocks (not
+        # just shared ones), so the free path is uniform.
+        #   block_hashes: physical_idx -> content hash (only present for
+        #                 blocks that were registered as shareable)
+        #   hash_to_block: content hash -> physical_idx (the inverse;
+        #                  authoritative source for "is this hash cached")
+        #   ref_count:    physical_idx -> int. Always >= 1 while the
+        #                 block is allocated; hitting 0 triggers eviction.
+        self.block_hashes: dict[int, int] = {}
+        self.hash_to_block: dict[int, int] = {}
+        self.ref_count: dict[int, int] = {}
 
     # ---- Accounting / admission --------------------------------------
 
@@ -146,13 +179,34 @@ class PagedKVCache:
         request_id: str,
         prefill_blocks_needed: int,
         total_blocks_needed: int,
-    ) -> None:
+        prefill_block_hashes: list[int | None] | None = None,
+    ) -> int:
         """Reserve capacity for a new request and allocate its prefill blocks.
 
         Caller must have already verified can_admit. We allocate the prefill
         portion immediately (we'll write to those blocks during prefill);
         the remainder is RESERVED but not yet bound to physical indices.
         JIT allocation happens during decode via allocate_block().
+
+        prefill_block_hashes (when not None) drives prefix-cache sharing:
+            * must have length == prefill_blocks_needed
+            * entry None: allocate FRESH from the free list. Used for the
+              partial-tail block (always per-request) and for the last
+              full block when prompt_len is an exact multiple of
+              block_size (so prefill forward has somewhere to write).
+            * entry int h: try hash_to_block[h]. If hit, the existing
+              physical block is shared (refcount incremented, no free-
+              list draw). If miss, allocate fresh AND register the hash
+              for future requests to find.
+
+        When prefix caching is disabled at the pool level
+        (enable_prefix_cache=False), the hashes argument is ignored and
+        every block is allocated fresh -- pre-Day-12 byte parity.
+
+        Returns the number of blocks that were satisfied as cache hits
+        (0 when caching is off or no hashes were passed). The scheduler
+        uses this both to decide hit_boundary for prefill slicing and
+        to emit the request_admitted event's hit-rate fields.
         """
         if request_id in self._blocks:
             raise RuntimeError(f"Request {request_id!r} already admitted.")
@@ -162,22 +216,54 @@ class PagedKVCache:
                 f"{total_blocks_needed} blocks, {self.num_free_blocks()} free."
             )
 
-        # Physically allocate the prefill blocks. Emit one block_allocated
-        # event per block so the visualiser can draw the prefill footprint
-        # block-by-block, matching how decode-time allocations arrive.
+        # Normalise hash input. When caching is disabled or the caller
+        # didn't bother computing hashes, this collapses to "every entry
+        # None" which is exactly the old all-fresh behaviour.
+        if not self.enable_prefix_cache or prefill_block_hashes is None:
+            hashes_iter: list[int | None] = [None] * prefill_blocks_needed
+        else:
+            if len(prefill_block_hashes) != prefill_blocks_needed:
+                raise ValueError(
+                    f"prefill_block_hashes has length {len(prefill_block_hashes)}; "
+                    f"expected {prefill_blocks_needed}"
+                )
+            hashes_iter = list(prefill_block_hashes)
+
         allocated: list[int] = []
-        for logical_idx in range(prefill_blocks_needed):
-            phys = self._free_blocks.pop()
+        hits = 0
+        for logical_idx, h in enumerate(hashes_iter):
+            shared = False
+            if h is not None and h in self.hash_to_block:
+                # Cache hit. Bind to the existing physical block by
+                # bumping its refcount. NO draw from the free list, so
+                # other admissions get the saved capacity for free.
+                phys = self.hash_to_block[h]
+                self.ref_count[phys] += 1
+                shared = True
+                hits += 1
+            else:
+                # Miss. Pull a fresh physical block from the free pool.
+                # If the caller provided a hash for this slot we record
+                # it so the NEXT request with an identical chunk hits.
+                phys = self._free_blocks.pop()
+                self.ref_count[phys] = 1
+                if h is not None:
+                    self.block_hashes[phys] = h
+                    self.hash_to_block[h] = phys
             allocated.append(phys)
             if self.event_bus is not None:
                 self.event_bus.emit(events.block_allocated(
                     request_id=request_id,
                     physical_block_idx=phys,
                     logical_idx=logical_idx,
+                    shared=shared,
                 ))
         self._blocks[request_id] = allocated
-        # Reserve the remainder.
+        # Reserve the remainder. The reservation count is unchanged by
+        # sharing: admission control is conservative (assumes all-miss)
+        # so future decode JIT allocations still have budget.
         self._reserved[request_id] = total_blocks_needed - prefill_blocks_needed
+        return hits
 
     def allocate_block(self, request_id: str) -> int:
         """Physically allocate one more block to an already-admitted request.
@@ -185,6 +271,11 @@ class PagedKVCache:
         Called by the per-request cache when a decode step fills the last
         block and needs a fresh one. This consumes from the request's
         reservation so global accounting stays consistent.
+
+        Decode-time growth ALWAYS allocates a fresh block (refcount=1,
+        no hash recorded). Decode appends mutate the tail block; sharing
+        a mutable block would race. Only prefill-time blocks can be
+        shared, and they are by construction immutable after admit.
         """
         if request_id not in self._blocks:
             raise RuntimeError(f"Request {request_id!r} not admitted.")
@@ -194,6 +285,7 @@ class PagedKVCache:
                 f"The scheduler's admission control under-counted."
             )
         b = self._free_blocks.pop()
+        self.ref_count[b] = 1
         self._blocks[request_id].append(b)
         self._reserved[request_id] -= 1
         if self.event_bus is not None:
@@ -202,18 +294,49 @@ class PagedKVCache:
                 physical_block_idx=b,
                 # logical_idx is len-1 because we just appended.
                 logical_idx=len(self._blocks[request_id]) - 1,
+                shared=False,
             ))
         return b
 
     def free_request(self, request_id: str) -> None:
-        """Return all of a request's blocks (allocated + reserved) to the pool."""
+        """Decrement refcounts for the request's blocks; return any whose
+        refcount drops to zero to the free pool.
+
+        Edge cases:
+          * Double-free: _blocks.pop returns [] and the loop is a no-op.
+            Safe.
+          * Underflow: hard assert. Should never happen with correct
+            accounting; if it does, the bug is in admit_request /
+            allocate_block balancing, not here.
+          * Eviction: when refcount drops to zero we also evict the
+            block's hash entry from hash_to_block and block_hashes.
+            This is the "no LRU retention" policy: a cached prefix
+            stays alive only as long as some live request references
+            it. Simpler than vLLM's real eviction; correct.
+        """
         for b in self._blocks.pop(request_id, []):
-            self._free_blocks.add(b)
-            if self.event_bus is not None:
-                self.event_bus.emit(events.block_freed(
-                    request_id=request_id,
-                    physical_block_idx=b,
-                ))
+            self.ref_count[b] -= 1
+            if self.ref_count[b] < 0:
+                raise RuntimeError(
+                    f"refcount underflow on block {b} freeing {request_id!r}; "
+                    f"admit/allocate accounting is broken"
+                )
+            if self.ref_count[b] == 0:
+                del self.ref_count[b]
+                self._free_blocks.add(b)
+                h = self.block_hashes.pop(b, None)
+                if h is not None:
+                    # Defensive: only drop the inverse mapping if it
+                    # still points at THIS block. A future LRU policy
+                    # might reassign a hash to a different physical
+                    # block; today they always agree.
+                    if self.hash_to_block.get(h) == b:
+                        del self.hash_to_block[h]
+                if self.event_bus is not None:
+                    self.event_bus.emit(events.block_freed(
+                        request_id=request_id,
+                        physical_block_idx=b,
+                    ))
         # Clearing the reservation gives the unused budget back to other
         # admissions.
         self._reserved.pop(request_id, None)
