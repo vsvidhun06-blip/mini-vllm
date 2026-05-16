@@ -129,6 +129,9 @@ class ContinuousBatchScheduler:
         token_decoder: Callable[[int], str] | None = None,
         token_emitter: Callable[[str, int, str, int], None] | None = None,
         enable_prefix_cache: bool = True,
+        enable_spec_decode: bool = False,
+        spec_decode_k: int = 4,
+        spec_decode_observer: Callable[[int, int], None] | None = None,
     ) -> None:
         """
         Args:
@@ -168,6 +171,23 @@ class ContinuousBatchScheduler:
                 fresh -- byte-identical to pre-Day-12 behaviour. The
                 parity tests construct schedulers with both settings
                 and assert identical outputs.
+            enable_spec_decode: when True, the DECODE phase uses
+                self-speculative decoding (draft K tokens via early-exit
+                forward, then verify with a single full forward) for
+                requests that are running ALONE in the decode batch. Under
+                greedy sampling this produces byte-identical output to
+                vanilla decode -- the parity test enforces that. v0.3
+                limitation: when 2+ requests are simultaneously in DECODE,
+                the scheduler falls back to vanilla batched decode for
+                that step. Default False so existing tests run untouched.
+            spec_decode_k: number of draft tokens per round when
+                speculative decoding is enabled. K=4 is the vLLM default
+                and a good fit for our acceptance-rate regime.
+            spec_decode_observer: optional callable
+                `(accepted_count, k) -> None` fired once per spec_decode
+                round. The metrics layer uses this to populate the
+                acceptance-rate histogram. None disables observation; the
+                spec decode path runs identically either way.
 
         Two independent budgets:
             * max_batch_size: how many requests can run in one forward pass.
@@ -183,6 +203,13 @@ class ContinuousBatchScheduler:
         self.token_decoder = token_decoder
         self.token_emitter = token_emitter
         self.enable_prefix_cache = enable_prefix_cache
+        # Speculative-decoding configuration. The flags are inert unless
+        # the DECODE phase finds exactly one request in DECODE status,
+        # because batched spec decode is a v0.4 problem (per-row K/V
+        # truncation in a batched cache layout).
+        self.enable_spec_decode = enable_spec_decode
+        self.spec_decode_k = spec_decode_k
+        self.spec_decode_observer = spec_decode_observer
 
         # The KV pool. One big tensor shared across all requests. The pool
         # also gets the event_bus so block_allocated / block_freed fire
@@ -490,41 +517,112 @@ class ContinuousBatchScheduler:
             ))
             r.status = RequestStatus.DONE if r.is_finished() else RequestStatus.DECODE
 
-        # --- 3. Decode (batched) ------------------------------------------
+        # --- 3. Decode -----------------------------------------------------
+        # Two code paths share this slot:
+        #   * Vanilla batched decode: one forward over the whole decode
+        #     batch. Always correct, used when speculative decoding is
+        #     disabled OR when 2+ requests are in DECODE this step.
+        #   * Speculative decode (single-request only in v0.3): early-exit
+        #     drafts K tokens, then a verify forward accepts a prefix and
+        #     emits 1..K+1 tokens per step. Byte-identical to vanilla
+        #     greedy by construction; the parity test enforces it.
         decode_reqs = [r for r in self.active if r.status is RequestStatus.DECODE]
         if decode_reqs:
-            input_ids = torch.tensor(
-                [[r.last_token_id] for r in decode_reqs],
-                dtype=torch.long,
-                device=self.device,
+            use_spec_decode = (
+                self.enable_spec_decode and len(decode_reqs) == 1
             )
-            caches = [r.cache for r in decode_reqs]
-            with torch.no_grad():
-                logits = self.model(input_ids, kv_cache=caches)  # (B, 1, V)
+            if use_spec_decode:
+                # Lazy import to keep the scheduler module load-light when
+                # spec decode is disabled (the import pulls in nothing
+                # exotic, but the lazy form documents the conditional
+                # dependency).
+                from src.engine.spec_decode import (
+                    DEFAULT_N_DRAFT_LAYERS,
+                    spec_decode_step,
+                )
 
-            # Collect the per-row results first so we can emit ONE
-            # decode_step event covering the whole batch.
-            batch_for_event: list[tuple[str, int, str]] = []
-            for i, r in enumerate(decode_reqs):
-                next_id = int(torch.argmax(logits[i, -1, :]))
-                r.generated_token_ids.append(next_id)
-                emitted.append((r.request_id, next_id))
-                token_str = self._decode_token_str(next_id)
-                batch_for_event.append((r.request_id, next_id, token_str))
-                # Per-token streaming hook (see prefill emit for rationale).
-                # Fired BEFORE the decode_step bus event so an SSE
-                # consumer sees the token at roughly the same wall-clock
-                # moment as the visualiser sees the batch event.
-                if self.token_emitter is not None:
-                    self.token_emitter(
-                        r.request_id, next_id, token_str, self._step_idx,
-                    )
+                r = decode_reqs[0]
+                # Budget = how many more tokens this request is allowed to
+                # emit before hitting its cap. spec_decode_step uses this
+                # to truncate its emit list so we never overshoot.
+                remaining = r.max_new_tokens - len(r.generated_token_ids)
+                emit_list, accepted = spec_decode_step(
+                    model=self.model,
+                    request_cache=r.cache,
+                    last_token_id=r.last_token_id,
+                    k=self.spec_decode_k,
+                    eos_token_id=r.eos_token_id,
+                    max_emit=remaining,
+                    n_draft_layers=DEFAULT_N_DRAFT_LAYERS,
+                )
+                # Observer hook (metrics). Fires once per round with the
+                # raw acceptance count -- truncation by EOS or budget
+                # would deflate the speedup signal, so we observe the
+                # untruncated `accepted` (out of self.spec_decode_k).
+                if self.spec_decode_observer is not None:
+                    self.spec_decode_observer(accepted, self.spec_decode_k)
+
+                batch_for_event: list[tuple[str, int, str]] = []
+                for next_id in emit_list:
+                    r.generated_token_ids.append(next_id)
+                    emitted.append((r.request_id, next_id))
+                    token_str = self._decode_token_str(next_id)
+                    batch_for_event.append((r.request_id, next_id, token_str))
+                    # Per-token streaming hook fires per emitted token, so
+                    # SSE consumers see the same number of token events as
+                    # tokens emitted -- consistent with the vanilla path
+                    # even when one step yields multiple tokens.
+                    if self.token_emitter is not None:
+                        self.token_emitter(
+                            r.request_id, next_id, token_str, self._step_idx,
+                        )
+                # Status update after appending all spec-emitted tokens.
+                # is_finished() now reflects the last token in the list
+                # (which is either the truncating EOS or the budget cap,
+                # if either applied -- spec_decode_step truncates).
                 if r.is_finished():
                     r.status = RequestStatus.DONE
-            self._emit(events.decode_step(
-                step_idx=self._step_idx,
-                batch=batch_for_event,
-            ))
+                # One decode_step event for the whole spec round, listing
+                # every emitted token. The visualiser already handles
+                # multiple entries per request in the batch field.
+                self._emit(events.decode_step(
+                    step_idx=self._step_idx,
+                    batch=batch_for_event,
+                ))
+            else:
+                # --- Vanilla batched decode (the pre-Day-15 path) -------
+                input_ids = torch.tensor(
+                    [[r.last_token_id] for r in decode_reqs],
+                    dtype=torch.long,
+                    device=self.device,
+                )
+                caches = [r.cache for r in decode_reqs]
+                with torch.no_grad():
+                    logits = self.model(input_ids, kv_cache=caches)  # (B, 1, V)
+
+                # Collect the per-row results first so we can emit ONE
+                # decode_step event covering the whole batch.
+                batch_for_event = []
+                for i, r in enumerate(decode_reqs):
+                    next_id = int(torch.argmax(logits[i, -1, :]))
+                    r.generated_token_ids.append(next_id)
+                    emitted.append((r.request_id, next_id))
+                    token_str = self._decode_token_str(next_id)
+                    batch_for_event.append((r.request_id, next_id, token_str))
+                    # Per-token streaming hook (see prefill emit for rationale).
+                    # Fired BEFORE the decode_step bus event so an SSE
+                    # consumer sees the token at roughly the same wall-clock
+                    # moment as the visualiser sees the batch event.
+                    if self.token_emitter is not None:
+                        self.token_emitter(
+                            r.request_id, next_id, token_str, self._step_idx,
+                        )
+                    if r.is_finished():
+                        r.status = RequestStatus.DONE
+                self._emit(events.decode_step(
+                    step_idx=self._step_idx,
+                    batch=batch_for_event,
+                ))
 
         # --- 4. Eviction --------------------------------------------------
         # Done requests release their blocks to the pool. This is what lets

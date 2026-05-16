@@ -132,6 +132,23 @@ mini-vllm/
 └── requirements.txt
 ```
 
+## v0.3 status
+
+- ✅ Speculative decoding infrastructure (draft, verify, KV cache rewind,
+  scheduler integration, metrics, visualiser dashboard)
+- ✅ Algorithm correctness verified (byte-identical parity to greedy
+  via test_spec_decode_matches_greedy)
+- ⚠️ Self-speculation with early-exit on untrained TinyLlama shows
+   ~1% acceptance vs. ~30%+ needed to break even with K=4. The
+   algorithm is correct; the limitation is that TinyLlama wasn't
+   trained for early-exit (no LayerSkip-style objective), so
+   intermediate-layer residuals don't decode well via the final
+   lm_head. Probe script confirmed even layer 21 of 22 only reaches
+   52% acceptance (95%+ needed).
+- → v0.4 will integrate a trained draft mechanism (real smaller
+  model, EAGLE-style draft head, or LayerSkip fine-tune). The
+  infrastructure shipped in v0.3 is reusable.
+
 ## Author
 
 Vidhun Vijayakumar Suja

@@ -114,6 +114,41 @@ POOL_BLOCKS_FREE = Gauge(
     "Unallocated KV-cache blocks.",
 )
 
+# Day 15: speculative decoding acceptance rate. One observation per
+# spec-decode round, recording the fraction of K drafted tokens that
+# matched the base model's argmax. Buckets are uniform 0.0..1.0; the
+# coarse-grained ones are enough for "drafts are mostly accepted /
+# mostly rejected" at a glance, fine-grained ones for trend analysis.
+#
+# Aliases:
+#   * Empty histogram (count == 0) means spec decode never ran this
+#     process -- either disabled at the scheduler or the engine had
+#     more than one DECODE request every step (v0.3 falls back to
+#     batched decode in that case).
+#   * Histogram with non-zero count but very low mean (~0.01) is the
+#     honest TinyLlama early-exit result: algorithm correct, draft
+#     fidelity poor because the model was not trained for early-exit.
+#     See docs/design.md for the v0.4 plan (trained draft head).
+SPEC_DECODE_ACCEPTANCE_RATE = Histogram(
+    "spec_decode_acceptance_rate",
+    "Per-round speculative decoding acceptance rate (accepted / K).",
+    buckets=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
+
+
+def observe_spec_decode_round(accepted: int, k: int) -> None:
+    """Record one spec-decode round's acceptance ratio.
+
+    Wired to ContinuousBatchScheduler via the `spec_decode_observer`
+    constructor argument, so each round of draft+verify produces one
+    histogram observation. The scheduler emits this from the same
+    thread as the rest of its work (no asyncio bridging needed -- the
+    prometheus_client instrument is thread-safe).
+    """
+    if k <= 0:
+        return
+    SPEC_DECODE_ACCEPTANCE_RATE.observe(accepted / k)
+
 
 # Touch every label value once so all three series appear in /metrics
 # output from the first scrape, even before anything has happened.

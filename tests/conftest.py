@@ -118,6 +118,9 @@ def server_engine(my_model, tokenizer):
         event_bus=api._event_bus,
         token_decoder=lambda tid: tokenizer.decode([tid], skip_special_tokens=False),
         token_emitter=api._on_token,
+        enable_spec_decode=False,
+        spec_decode_k=4,
+        spec_decode_observer=metrics.observe_spec_decode_round,
     )
     api._pump_thread = threading.Thread(
         target=api._pumper_loop, daemon=True, name="engine-pump"

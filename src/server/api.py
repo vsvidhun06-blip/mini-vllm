@@ -211,6 +211,15 @@ def _init_engine() -> None:
     # same reason.)
     _event_bus.subscribe(metrics.collector.on_event)
 
+    # Speculative decoding is OFF in the public server by default because
+    # on TinyLlama (no early-exit training) the measured acceptance rate
+    # is ~1% -- below the breakeven threshold, so enabling it would slow
+    # every /generate response down. The infrastructure is wired up
+    # regardless: the metrics observer is always passed in, so /metrics
+    # surfaces the spec_decode_acceptance_rate histogram with count==0
+    # by default. Flipping `enable_spec_decode=True` here (or in a fork
+    # of this file) is all that's needed to demo the algorithm on the
+    # visualiser dashboard.
     _scheduler = ContinuousBatchScheduler(
         model,
         max_batch_size=8,
@@ -219,6 +228,9 @@ def _init_engine() -> None:
         event_bus=_event_bus,
         token_decoder=lambda tid: _tokenizer.decode([tid], skip_special_tokens=False),
         token_emitter=_on_token,
+        enable_spec_decode=False,
+        spec_decode_k=4,
+        spec_decode_observer=metrics.observe_spec_decode_round,
     )
 
     # Single pumper thread for the lifetime of the process. Daemon so it

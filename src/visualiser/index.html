@@ -496,6 +496,10 @@
       <div class="chart-title">Pool Utilization <span class="chart-unit">blocks</span></div>
       <div class="chart-canvas-wrap"><canvas id="chart-pool"></canvas></div>
     </div>
+    <div class="chart-panel">
+      <div class="chart-title">Spec Decode Acceptance <span class="chart-unit">last 60s</span></div>
+      <div class="chart-canvas-wrap"><canvas id="chart-spec"></canvas></div>
+    </div>
   </div>
 
   <main>
@@ -1063,11 +1067,18 @@ const dash = {
   prev: null,                    // { t, tpotCount }
   // [{ t, hits, misses }] kept for HITRATE_WINDOW_MS
   hitRateWindow: [],
+  // Spec decode acceptance is a histogram. The current point's value is
+  // the MEAN acceptance rate per round across all rounds observed since
+  // the previous scrape: (delta_sum) / (delta_count). When no rounds
+  // occurred this scrape we plot 0 (the panel stays empty/quiet when
+  // spec decode is disabled or not running).
+  prevSpec: null,                // { sum, count }
 };
 
 let throughputChart = null;
 let latencyChart = null;
 let poolChart = null;
+let specChart = null;
 
 /* Shared axis styling: transparent background, subtle grid, mono ticks,
    no legend (the panel title is the label). */
@@ -1120,6 +1131,29 @@ function initCharts() {
       { data: [], borderColor: '#e74c3c', borderWidth: 1.5, tension: 0.25 }, // p99
     ] },
     options: chartBaseOptions(v => Number(v).toFixed(2)),
+  });
+
+  // Spec decode acceptance: rolling-window line chart, 0..1 y-axis.
+  // We force the y-axis bounds so a tiny acceptance rate (e.g. 1% on
+  // untrained TinyLlama) is visually distinguishable from zero -- the
+  // line hugs the bottom but is present, signalling "spec decode is on
+  // but the draft is barely agreeing".
+  specChart = new Chart(document.getElementById('chart-spec'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      data: [], borderColor: '#ffaa00', borderWidth: 1.5,
+      fill: true, backgroundColor: 'rgba(255,170,0,0.10)', tension: 0.25,
+    }] },
+    options: (function() {
+      const opt = chartBaseOptions(v => (Number(v) * 100).toFixed(0) + '%');
+      // Pin the y-axis to [0, 1] so the chart's vertical scale is
+      // comparable across spec-decode-on and -off runs. Without this,
+      // Chart.js would autoscale to the tiny observed range and a 1%
+      // acceptance rate would look identical to 100%.
+      opt.scales.y.min = 0;
+      opt.scales.y.max = 1;
+      return opt;
+    })(),
   });
 
   poolChart = new Chart(document.getElementById('chart-pool'), {
@@ -1212,6 +1246,22 @@ function updateDashboard(parsed) {
     poolChart.data.datasets[2].data = [promValue(parsed, 'pool_blocks_free') ?? 0];
     poolChart.update('none');
   }
+
+  // -- Spec decode acceptance: mean acceptance rate per round over the
+  //    last scrape interval. Prometheus exposes the histogram's running
+  //    _sum and _count totals; the per-scrape mean is the delta ratio.
+  //    When no rounds occurred this scrape (spec decode disabled, or no
+  //    decode-batched-to-one this tick) we plot 0 so the chart shows
+  //    quiet rather than NaN.
+  const specSum = promValue(parsed, 'spec_decode_acceptance_rate_sum') ?? 0;
+  const specCount = promValue(parsed, 'spec_decode_acceptance_rate_count') ?? 0;
+  if (dash.prevSpec) {
+    const dSum = specSum - dash.prevSpec.sum;
+    const dCount = specCount - dash.prevSpec.count;
+    const mean = dCount > 0 ? (dSum / dCount) : 0;
+    pushSamples(specChart, [mean]);
+  }
+  dash.prevSpec = { sum: specSum, count: specCount };
 
   dash.prev = { t: now, tpotCount };
 }
