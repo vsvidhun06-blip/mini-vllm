@@ -132,6 +132,55 @@ mini-vllm/
 └── requirements.txt
 ```
 
+## v0.4 status (Day 16 tuning — empirical findings)
+
+Bounded effort to recover net speedup from v0.3's spec decode. Two
+phases planned; Phase 2 ruled out by tokenizer reality.
+
+**Phase 1 — configuration sweep.** Made K and exit_layer configurable on
+the scheduler, swept three combinations against vanilla decode on the
+continuation prompt:
+
+| config                        | speedup | acceptance |
+|-------------------------------|--------:|-----------:|
+| Day 15 default (K=4, exit=8)  |   0.46x |       1.1% |
+| (a) K=2, exit=8               |   0.65x |       2.1% |
+| (b) K=4, exit=18              |   0.59x |      28.3% |
+| (c) K=2, exit=18              | **0.78x** | **37.5%** |
+
+K=2 outperforms K=4 at both depths because acceptance is per-position
+and errors compound — later draft positions are less likely to match,
+so averaging over fewer positions raises the rate AND lowers the per-
+round waste. Acceptance climbs nicely with depth (1.1% → 28.3% →
+37.5%) but never crosses the breakeven inequality `α > exit_layer/22`
+(needs 36% at exit=8, 82% at exit=18). Best result is still slowdown.
+
+**Phase 2 — real draft model.** Ruled out without coding. The plan
+required a public small Llama with TinyLlama's SentencePiece
+tokenizer; none exists. SmolLM-135M, Qwen-0.5B, and friends all use
+GPT-2-family BPE — incompatible. Cross-tokenizer speculative decoding
+requires per-token remapping that usually breaks the byte-identical
+parity contract; it's a research project, not a same-day swap.
+
+**Conclusion.** Net speedup requires a trained draft mechanism
+matching the base tokenizer:
+
+- LayerSkip-style fine-tune on TinyLlama (adds early-exit training
+  signal, lifts intermediate-layer acceptance into the useful range).
+- EAGLE-style draft head (small trained adapter that predicts future
+  positions from the base model's hidden states).
+- Medusa multi-head decoding (multiple lm_heads predicting N positions
+  forward).
+
+All three need training cycles. The v0.3 infrastructure (KV rewind,
+scheduler integration, metrics, dashboard) is correct and reusable
+under any of them. Day 16 is documented as the experimental side-quest
+that proved which knobs were and weren't load-bearing.
+
+The exit_layer plumbing landed today so `enable_spec_decode=True` is
+fully tunable without code edits — Day 17+ can swap in a draft head
+behind the same interface.
+
 ## v0.3 status
 
 - ✅ Speculative decoding infrastructure (draft, verify, KV cache rewind,

@@ -131,6 +131,7 @@ class ContinuousBatchScheduler:
         enable_prefix_cache: bool = True,
         enable_spec_decode: bool = False,
         spec_decode_k: int = 4,
+        spec_decode_exit_layer: int = 8,
         spec_decode_observer: Callable[[int, int], None] | None = None,
     ) -> None:
         """
@@ -209,6 +210,12 @@ class ContinuousBatchScheduler:
         # truncation in a batched cache layout).
         self.enable_spec_decode = enable_spec_decode
         self.spec_decode_k = spec_decode_k
+        # Depth of the early-exit draft path. 8 is the Day-15 default; the
+        # v0.4 probing (Day 16) tries deeper layers to see if a higher
+        # acceptance rate can offset the extra draft cost. The breakeven
+        # rule is alpha > exit_layer/total_layers, so going deeper only
+        # helps if acceptance scales faster than depth.
+        self.spec_decode_exit_layer = spec_decode_exit_layer
         self.spec_decode_observer = spec_decode_observer
 
         # The KV pool. One big tensor shared across all requests. The pool
@@ -536,10 +543,7 @@ class ContinuousBatchScheduler:
                 # spec decode is disabled (the import pulls in nothing
                 # exotic, but the lazy form documents the conditional
                 # dependency).
-                from src.engine.spec_decode import (
-                    DEFAULT_N_DRAFT_LAYERS,
-                    spec_decode_step,
-                )
+                from src.engine.spec_decode import spec_decode_step
 
                 r = decode_reqs[0]
                 # Budget = how many more tokens this request is allowed to
@@ -553,7 +557,7 @@ class ContinuousBatchScheduler:
                     k=self.spec_decode_k,
                     eos_token_id=r.eos_token_id,
                     max_emit=remaining,
-                    n_draft_layers=DEFAULT_N_DRAFT_LAYERS,
+                    n_draft_layers=self.spec_decode_exit_layer,
                 )
                 # Observer hook (metrics). Fires once per round with the
                 # raw acceptance count -- truncation by EOS or budget
