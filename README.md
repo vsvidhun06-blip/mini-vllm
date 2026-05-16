@@ -1,6 +1,6 @@
 # Mini-vLLM — from-scratch LLM inference engine
 
-> **v0.1: CPU MVP complete.** v0.2 (GPU, streaming, prefix caching, metrics) in progress.
+> **v0.2: GPU + streaming + prefix caching + metrics shipped.** v0.3 (speculative decoding) in progress.
 
 An educational, from-scratch reimplementation of vLLM's core ideas on
 TinyLlama-1.1B-Chat. Continuous batching, paged KV cache (PagedAttention),
@@ -11,7 +11,7 @@ Face parity tests as the correctness anchor at each layer of the stack.
 
 ## Hero
 
-![Mini-vLLM live visualiser](docs/screenshots/hero.png)
+![Mini-vLLM live visualiser](docs/screenshots/hero_v2.png)
 
 *Four concurrent requests in the DECODE phase. Each colour is one
 request_id, hashed deterministically so the same hue appears in the
