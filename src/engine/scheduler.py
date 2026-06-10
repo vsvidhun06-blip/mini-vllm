@@ -100,6 +100,10 @@ class Request:
     # per-layer seq_len is pre-seeded to this value. 0 means no hit
     # (or prefix caching disabled); behaves identically to pre-Day-12.
     prefill_hit_boundary: int = 0
+    # Chunked-prefill progress. Allocated at admission alongside the cache.
+    # While the request is in PREFILL this tracks how much of the prompt has
+    # been pushed through the model across successive scheduler iterations.
+    chunk_state: "ChunkedPrefillRequest | None" = None
 
     @property
     def last_token_id(self) -> int:
@@ -118,6 +122,37 @@ class Request:
         return False
 
 
+@dataclass
+class ChunkedPrefillRequest:
+    """Chunked-prefill bookkeeping for one request.
+
+    A prompt longer than the scheduler's ``chunk_size`` is prefilled across
+    several iterations instead of in one monopolising forward pass. This holds
+    the resume point so each step knows which slice of the prompt to run next.
+
+    ``prefilled_so_far`` is an ABSOLUTE token count (it starts at the prefix-
+    cache hit boundary, not 0, when admit-time sharing already seeded part of
+    the cache). It equals the per-layer ``cache.seq_len`` between iterations,
+    which is exactly the RoPE position offset the model reads for the next
+    chunk -- so chunking is mathematically identical to a single-shot prefill.
+    """
+    request: "Request"
+    prefilled_so_far: int = 0   # prompt tokens already written to the KV cache
+    chunk_index: int = 0        # number of chunks run == index of the NEXT chunk
+
+    @property
+    def prompt_len(self) -> int:
+        return int(self.request.prompt_ids.shape[1])
+
+    @property
+    def tokens_remaining(self) -> int:
+        return self.prompt_len - self.prefilled_so_far
+
+    @property
+    def is_complete(self) -> bool:
+        return self.prefilled_so_far >= self.prompt_len
+
+
 class ContinuousBatchScheduler:
     def __init__(
         self,
@@ -125,6 +160,7 @@ class ContinuousBatchScheduler:
         max_batch_size: int,
         num_blocks: int,
         block_size: int = 16,
+        chunk_size: int = 256,
         event_bus: "EventBus | None" = None,
         token_decoder: Callable[[int], str] | None = None,
         token_emitter: Callable[[str, int, str, int], None] | None = None,
@@ -144,6 +180,16 @@ class ContinuousBatchScheduler:
                 tokens of K and V at every layer.
             block_size: tokens per block. 16 matches vLLM's default and
                 is a good fit for typical prompt + decode lengths.
+            chunk_size: the per-iteration TOKEN budget for chunked prefill
+                (vLLM v2 / SGLang style). Default 256. Each step, decode
+                requests are scheduled first (one token each, latency
+                priority); whatever budget remains is spent prefilling the
+                next waiting prompt, up to `chunk_size - num_decode_tokens`
+                tokens. A prompt longer than the remaining budget is split
+                across multiple iterations so it can't monopolise the GPU and
+                stall decode. A prompt that fits the budget prefills in one
+                chunk -- byte-identical to the pre-chunking full-prefill path,
+                which is why existing parity tests are unaffected.
             event_bus: optional. When provided, the scheduler emits
                 structured events at every state transition (admission,
                 prefill, decode, eviction) and forwards it to the KV pool
@@ -200,6 +246,9 @@ class ContinuousBatchScheduler:
         self.num_layers = model.config.num_hidden_layers
         self.max_batch_size = max_batch_size
         self.block_size = block_size
+        if chunk_size < 1:
+            raise ValueError(f"chunk_size must be >= 1, got {chunk_size}")
+        self.chunk_size = chunk_size
         self.event_bus = event_bus
         self.token_decoder = token_decoder
         self.token_emitter = token_emitter
@@ -468,6 +517,14 @@ class ContinuousBatchScheduler:
             # Stash the boundary on the request so the prefill phase
             # can slice without recomputing it.
             r.prefill_hit_boundary = hit_boundary
+            # Initialise chunked-prefill progress. We start from the prefix-
+            # cache hit boundary: those tokens are already in the cache, so
+            # chunking only ever runs over the uncached suffix.
+            r.chunk_state = ChunkedPrefillRequest(
+                request=r,
+                prefilled_so_far=hit_boundary,
+                chunk_index=0,
+            )
             r.status = RequestStatus.PREFILL
             self.active.append(r)
             self._emit(events.request_admitted(
@@ -478,37 +535,96 @@ class ContinuousBatchScheduler:
                 total_prefill_blocks=prefill_blocks,
             ))
 
-        # --- 2. Prefill ----------------------------------------------------
+        # --- 2. Chunked prefill --------------------------------------------
+        # vLLM-v2 / SGLang scheduling: decode requests get latency priority,
+        # so they spend the iteration's token budget FIRST. Whatever is left
+        # of `chunk_size` is used to prefill the next waiting prompt(s), a
+        # chunk at a time. A long prompt is split across iterations instead of
+        # hogging one giant forward pass -- that's the whole point: decode
+        # requests interleave between a long prompt's chunks instead of
+        # stalling behind it.
+        #
+        # `num_decode_tokens` is the count of requests ALREADY in DECODE at
+        # step entry (one new token each). A request that finishes prefill
+        # THIS step also decodes this step (section 3 re-scans), but that
+        # bonus token isn't charged here -- it can't be known until its last
+        # chunk runs. The budget is a soft cap, not an exact ledger.
+        num_decode_tokens = sum(
+            1 for r in self.active if r.status is RequestStatus.DECODE
+        )
+        remaining_budget = self.chunk_size - num_decode_tokens
+
         prefill_reqs = [r for r in self.active if r.status is RequestStatus.PREFILL]
         for r in prefill_reqs:
-            prompt_len = int(r.prompt_ids.shape[1])
-            # Prefix-cache slicing: when admit-time bound shared blocks
-            # to logical positions [0, hit_boundary), the K/V for those
-            # tokens is already in the pool and we run forward on the
-            # SUFFIX only. RoPE positions come out right because we
-            # pre-seeded the cache's per-layer seq_len to hit_boundary
-            # at admit time, so the model treats this forward as
-            # "continue from position hit_boundary". When hit_boundary
-            # is 0 (caching off, no hits, or first request to compute
-            # this prefix), this collapses to the full-prompt forward
-            # pass we did pre-Day-12.
-            hit_boundary = r.prefill_hit_boundary
-            self._emit(events.prefill_started(
+            if remaining_budget <= 0:
+                # Budget spent by decode (+ earlier prefill chunks this step).
+                # This request stays PREFILL and resumes next iteration --
+                # exactly the stall-prevention behaviour we want.
+                break
+
+            cs = r.chunk_state
+            prompt_len = cs.prompt_len
+            tokens_left = cs.tokens_remaining
+            if tokens_left <= 0:
+                # Defensive: an already-complete prefill shouldn't be here.
+                continue
+
+            chunk_tokens = min(remaining_budget, tokens_left)
+            start = cs.prefilled_so_far
+            is_first_chunk = cs.chunk_index == 0
+            completes = (start + chunk_tokens) >= prompt_len
+
+            # Keep the legacy bracketing events: prefill_started on the FIRST
+            # chunk, prefill_done on the LAST. Consumers (metrics TTFT, the
+            # events test) see the same start/done pair as before; for a
+            # prompt that fits one chunk this is byte-identical to the old
+            # single-shot prefill.
+            if is_first_chunk:
+                self._emit(events.prefill_started(
+                    request_id=r.request_id,
+                    num_tokens=prompt_len,
+                ))
+            self._emit(events.prefill_chunk_start(
                 request_id=r.request_id,
-                num_tokens=prompt_len,
+                chunk_index=cs.chunk_index,
+                tokens_in_chunk=chunk_tokens,
+                prefilled_so_far=start,
+                prompt_len=prompt_len,
             ))
-            forward_input = (
-                r.prompt_ids if hit_boundary == 0
-                else r.prompt_ids[:, hit_boundary:]
-            )
+
+            # Run the forward on just this slice. The KV cache's per-layer
+            # seq_len is already `start` (seeded to the prefix-cache boundary
+            # at admit, then advanced by each prior chunk's append), so RoPE
+            # positions and the causal mask come out exactly as a single-shot
+            # prefill would -- the model's sliced-prefill path (S>1,
+            # pos_offset>0) handles it. Intermediate chunks' logits are
+            # discarded; only the final chunk's last position yields a token.
+            forward_input = r.prompt_ids[:, start:start + chunk_tokens]
             with torch.no_grad():
-                logits = self.model(forward_input, kv_cache=r.cache)  # (1, S_suffix, V)
+                logits = self.model(forward_input, kv_cache=r.cache)  # (1, chunk, V)
+
+            cs.prefilled_so_far += chunk_tokens
+            cs.chunk_index += 1
+            remaining_budget -= chunk_tokens
+
+            self._emit(events.prefill_chunk_done(
+                request_id=r.request_id,
+                chunk_index=cs.chunk_index - 1,
+                tokens_in_chunk=chunk_tokens,
+                prefilled_so_far=cs.prefilled_so_far,
+                prompt_len=prompt_len,
+            ))
+
+            if not completes:
+                # More chunks to come; stays PREFILL, resumes next iteration.
+                continue
+
+            # Last chunk: the prompt is fully in the cache. Sample the first
+            # generated token off the final position's logits -- this is the
+            # request's first emitted token, exactly as before.
             next_id = int(torch.argmax(logits[0, -1, :]))
             r.generated_token_ids.append(next_id)
             emitted.append((r.request_id, next_id))
-            # Per-token streaming hook. Prefill produces ONE token (the
-            # first generated one) and that token must reach SSE
-            # subscribers just like decode tokens do, so fire here too.
             if self.token_emitter is not None:
                 self.token_emitter(
                     r.request_id,

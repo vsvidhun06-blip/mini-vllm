@@ -501,6 +501,55 @@ class LlamaModel(nn.Module):
 
         return generated
 
+    # -----------------------------------------------------------------------
+    # INT8 (W8A8) quantization
+    # -----------------------------------------------------------------------
+    #
+    # Swap every block's fp MultiHeadAttention for a QuantizedMultiHeadAttention,
+    # quantizing the q/k/v/o projection weights to int8 in place. This is an
+    # OFFLINE, in-place transform: call it once after the fp weights are loaded.
+    #
+    # The import is lazy on purpose. QuantizedMultiHeadAttention pulls in Triton
+    # (via the quantization kernels); a top-level import here would force every
+    # consumer of model.py -- including the CPU-only correctness tests -- to
+    # have Triton installed. Keeping it inside the method means only callers who
+    # actually quantize pay that dependency.
+    # -----------------------------------------------------------------------
+
+    def quantize(self) -> "LlamaModel":
+        """Replace all attention blocks with int8 W8A8 versions, in place.
+
+        Returns ``self`` so callers can write ``model = load(...).quantize()``.
+        """
+        from src.engine.kernels.quant_attention import QuantizedMultiHeadAttention
+
+        cfg = self.config
+        device = next(self.parameters()).device
+        for block in self.layers:
+            quantized = QuantizedMultiHeadAttention.from_float(
+                block.attn,
+                max_seq_len=cfg.max_position_embeddings,
+                rope_base=cfg.rope_theta,
+            )
+            # from_float copies tensors off the source (already on `device`), but
+            # be explicit so a mismatched source can't smuggle a stray CPU tensor
+            # into the hot path.
+            block.attn = quantized.to(device)
+
+        # Sanity check: every projection is now int8 and on the right device.
+        # This is the "verify weight loading works after quantization" guard --
+        # it fails loudly here rather than as a cryptic dtype error mid-forward.
+        for block in self.layers:
+            for proj in (
+                block.attn.q_proj,
+                block.attn.k_proj,
+                block.attn.v_proj,
+                block.attn.o_proj,
+            ):
+                assert proj.weight_int8.dtype == torch.int8, "projection not int8"
+                assert proj.weight_int8.device == device, "projection on wrong device"
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Weight loading from a Hugging Face checkpoint

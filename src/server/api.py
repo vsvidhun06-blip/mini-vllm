@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 import uuid
@@ -220,11 +221,18 @@ def _init_engine() -> None:
     # by default. Flipping `enable_spec_decode=True` here (or in a fork
     # of this file) is all that's needed to demo the algorithm on the
     # visualiser dashboard.
+    # Chunked-prefill token budget per iteration. Configurable via the
+    # CHUNK_SIZE env var (default 256). Lower it to make long prompts yield to
+    # decode more aggressively; raise it toward "effectively unbounded" to get
+    # the old single-shot full-prefill behaviour.
+    chunk_size = int(os.environ.get("CHUNK_SIZE", "256"))
+
     _scheduler = ContinuousBatchScheduler(
         model,
         max_batch_size=8,
         num_blocks=64,
         block_size=16,
+        chunk_size=chunk_size,
         event_bus=_event_bus,
         token_decoder=lambda tid: _tokenizer.decode([tid], skip_special_tokens=False),
         token_emitter=_on_token,

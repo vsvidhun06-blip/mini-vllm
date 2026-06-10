@@ -304,7 +304,18 @@ class MultiHeadAttention(nn.Module):
         pos_offset = kv_cache.seq_len(layer_idx) if kv_cache is not None else 0
         cos = self.rope_cos[pos_offset:pos_offset + S].to(dtype=q.dtype)
         sin = self.rope_sin[pos_offset:pos_offset + S].to(dtype=q.dtype)
-        q, k = apply_rope(q, k, cos, sin)
+        # On CUDA, fuse the rotation into a single kernel launch per tensor
+        # (see src/engine/kernels/rope.py). On CPU we keep the reference
+        # PyTorch path -- it stays correct and avoids importing Triton, which
+        # isn't installed (or supported) on CPU-only hosts. The import is lazy
+        # for exactly that reason: a top-level `import triton` would break the
+        # CPU correctness tests.
+        if q.is_cuda:
+            from src.engine.kernels.rope import fused_rope
+            q = fused_rope(q, cos, sin)  # cos/sin are (S, D) -> broadcast batch
+            k = fused_rope(k, cos, sin)
+        else:
+            q, k = apply_rope(q, k, cos, sin)
 
         # 4) Cache update.
         #    We cache K *after* RoPE, V as-is (V isn't rotated). Caching
@@ -362,9 +373,26 @@ class MultiHeadAttention(nn.Module):
             # Broadcast to (S, S_total). True == attend.
             attn_mask = k_pos.unsqueeze(0) <= q_pos.unsqueeze(1)
             is_causal = False
-        attn_out = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, is_causal=is_causal,
-        )
+        # On CUDA, run our from-scratch FA2 kernel; SDPA stays the CPU fallback
+        # (and avoids importing Triton on CPU-only hosts -- hence the lazy
+        # import). The three masking cases map cleanly onto the kernel:
+        #   * decode  (attn_mask None, is_causal False) -> causal=False
+        #   * prefill (attn_mask None, is_causal True ) -> causal=True
+        #   * sliced  (bool attn_mask)                  -> additive -inf bias
+        if q.is_cuda:
+            from src.engine.kernels.flash_attention import flash_attention_forward
+            if attn_mask is not None:
+                # Convert the boolean "True == attend" mask to the additive
+                # float bias the kernel wants: 0.0 to attend, -inf to forbid.
+                add_mask = torch.zeros_like(attn_mask, dtype=q.dtype)
+                add_mask = add_mask.masked_fill(~attn_mask, float("-inf"))
+                attn_out = flash_attention_forward(q, k, v, attn_mask=add_mask)
+            else:
+                attn_out = flash_attention_forward(q, k, v, causal=is_causal)
+        else:
+            attn_out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=attn_mask, is_causal=is_causal,
+            )
         # attn_out: (B, NQ, S, D) -- still only S queries on the output side.
 
         # 7) Merge heads back: (B, NQ, S, D) -> (B, S, NQ*D) -> (B, S, H).
@@ -448,11 +476,22 @@ class MultiHeadAttention(nn.Module):
         )                                                     # (B,)
         cos = self.rope_cos[positions].to(dtype=q.dtype)      # (B, D)
         sin = self.rope_sin[positions].to(dtype=q.dtype)      # (B, D)
-        # Broadcast over heads (dim 1) and seq (dim 2): (B, 1, 1, D).
-        cos = cos.unsqueeze(1).unsqueeze(1)
-        sin = sin.unsqueeze(1).unsqueeze(1)
-        q = q * cos + _rotate_half(q) * sin
-        k = k * cos + _rotate_half(k) * sin
+        # Same CUDA/CPU split as the single-cache path. Here the angle varies
+        # PER BATCH ROW (each request is at its own position), so we pass cos/
+        # sin as (B, S=1, D) and the fused kernel indexes them per-batch via a
+        # real batch stride -- no broadcast.
+        if q.is_cuda:
+            from src.engine.kernels.rope import fused_rope
+            cos_k = cos.unsqueeze(1)                           # (B, 1, D)
+            sin_k = sin.unsqueeze(1)                           # (B, 1, D)
+            q = fused_rope(q, cos_k, sin_k)
+            k = fused_rope(k, cos_k, sin_k)
+        else:
+            # Broadcast over heads (dim 1) and seq (dim 2): (B, 1, 1, D).
+            cos_b = cos.unsqueeze(1).unsqueeze(1)
+            sin_b = sin.unsqueeze(1).unsqueeze(1)
+            q = q * cos_b + _rotate_half(q) * sin_b
+            k = k * cos_b + _rotate_half(k) * sin_b
 
         # 4) Per-request cache update + SDPA. This is the loop we cannot
         #    avoid without padding (or paged attention -- Day 7). The body
@@ -475,7 +514,12 @@ class MultiHeadAttention(nn.Module):
 
             q_i = q[i:i+1]                                    # (1, NQ, 1, D)
             # Decode mode: no causal mask. The new query sees the full past.
-            out_i = F.scaled_dot_product_attention(q_i, k_i, v_i, is_causal=False)
+            # Same CUDA(FA2)/CPU(SDPA) split as the single-cache path.
+            if q_i.is_cuda:
+                from src.engine.kernels.flash_attention import flash_attention_forward
+                out_i = flash_attention_forward(q_i, k_i, v_i, causal=False)
+            else:
+                out_i = F.scaled_dot_product_attention(q_i, k_i, v_i, is_causal=False)
             attn_outs.append(out_i)                            # (1, NQ, 1, D)
 
         # 5) Re-batch and project out. Back to a single GEMM for o_proj.

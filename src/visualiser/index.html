@@ -305,8 +305,39 @@
     }
     .status-WAITING { background: #2a2418; color: var(--warn); }
     .status-PREFILL { background: #2a1a08; color: var(--warn); }
+    /* Chunked prefill gets its own purple badge so it reads as visibly
+       distinct from a one-shot full PREFILL. */
+    .status-CHUNKED_PREFILL { background: #241334; color: #c792ea; }
     .status-DECODE  { background: #003345; color: var(--accent); }
     .status-DONE    { background: #0f2a14; color: var(--ok); }
+
+    /* Per-request chunked-prefill progress bar (X/total tokens prefilled). */
+    .prefill-progress {
+      position: relative;
+      height: 12px;
+      background: #1a1430;
+      border-radius: 2px;
+      overflow: hidden;
+      flex: 1;
+      min-width: 60px;
+    }
+    .prefill-progress-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      background: linear-gradient(90deg, #7c4dff, #c792ea);
+      transition: width 0.15s ease-out;
+    }
+    .prefill-progress-label {
+      font-size: 10px;
+      color: #c792ea;
+      white-space: nowrap;
+      margin-left: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .req-preview.prefill-cell {
+      display: flex;
+      align-items: center;
+    }
 
     .req-preview {
       color: var(--text);
@@ -526,6 +557,8 @@
         <option value="request_admitted">request_admitted</option>
         <option value="request_waiting">request_waiting</option>
         <option value="prefill_started">prefill_started</option>
+        <option value="prefill_chunk_start">prefill_chunk_start</option>
+        <option value="prefill_chunk_done">prefill_chunk_done</option>
         <option value="prefill_done">prefill_done</option>
         <option value="decode_step">decode_step</option>
         <option value="block_allocated">block_allocated</option>
@@ -612,6 +645,28 @@ function reduce(ev) {
     case 'prefill_started': {
       const r = state.requests[p.request_id];
       if (r) r.status = 'PREFILL';
+      break;
+    }
+    case 'prefill_chunk_start': {
+      const r = state.requests[p.request_id];
+      if (r) {
+        r.prompt_len = p.prompt_len;
+        r.prefilled_so_far = p.prefilled_so_far;
+        r.chunk_index = p.chunk_index;
+        // It's a CHUNKED prefill (vs a one-shot full prefill) if this chunk
+        // doesn't cover the whole prompt, or we've already run a chunk. A
+        // full prefill keeps the plain PREFILL badge.
+        const chunked = (p.tokens_in_chunk < p.prompt_len) || (p.chunk_index > 0);
+        r.status = chunked ? 'CHUNKED_PREFILL' : 'PREFILL';
+      }
+      break;
+    }
+    case 'prefill_chunk_done': {
+      const r = state.requests[p.request_id];
+      if (r) {
+        r.prefilled_so_far = p.prefilled_so_far;
+        r.prompt_len = p.prompt_len;
+      }
       break;
     }
     case 'prefill_done': {
@@ -734,19 +789,36 @@ function renderRequests() {
     // show the TAIL of the output so the newest tokens are always visible
     // (truncate from the front with an ellipsis). Before any tokens we fall
     // back to the prompt, truncated from the end.
-    let preview;
-    let previewClass = 'req-preview';
-    if (tokenText) {
-      preview = tokenText.length > 40 ? '…' + tokenText.slice(-39) : tokenText;
+    // While a request is chunk-prefilling, the preview cell shows an X/total
+    // progress bar instead of text -- the prompt isn't generating tokens yet,
+    // so the bar is the informative thing to show.
+    let previewCell;
+    if (r.status === 'CHUNKED_PREFILL' && r.prompt_len) {
+      const done = r.prefilled_so_far || 0;
+      const pct = Math.min(100, Math.round(100 * done / r.prompt_len));
+      previewCell = `
+        <div class="req-preview prefill-cell">
+          <div class="prefill-progress">
+            <div class="prefill-progress-fill" style="width: ${pct}%"></div>
+          </div>
+          <span class="prefill-progress-label">${done}/${r.prompt_len}</span>
+        </div>`;
     } else {
-      const p = r.prompt || '';
-      preview = p.length > 40 ? p.slice(0, 39) + '…' : p;
-      previewClass += ' empty';
+      let preview;
+      let previewClass = 'req-preview';
+      if (tokenText) {
+        preview = tokenText.length > 40 ? '…' + tokenText.slice(-39) : tokenText;
+      } else {
+        const p = r.prompt || '';
+        preview = p.length > 40 ? p.slice(0, 39) + '…' : p;
+        previewClass += ' empty';
+      }
+      previewCell = `<div class="${previewClass}">${escapeHtml(preview)}</div>`;
     }
     row.innerHTML = `
       <div class="req-id" style="color: ${colorFor(r.request_id)}">${escapeHtml(shortId)}</div>
       <div class="req-status status-${r.status || 'WAITING'}">${r.status || 'WAITING'}</div>
-      <div class="${previewClass}">${escapeHtml(preview)}</div>
+      ${previewCell}
       <div class="req-tokens">${(r.tokens || []).length}t</div>
     `;
     container.appendChild(row);

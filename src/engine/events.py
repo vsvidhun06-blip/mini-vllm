@@ -138,6 +138,65 @@ def prefill_done(request_id: str, blocks_allocated: int) -> Event:
     )
 
 
+def prefill_chunk_start(
+    request_id: str,
+    chunk_index: int,
+    tokens_in_chunk: int,
+    prefilled_so_far: int = 0,
+    prompt_len: int = 0,
+) -> Event:
+    """A single chunk of a chunked prefill is about to run.
+
+    Chunked prefill splits a long prompt across several scheduler iterations
+    so a big prompt can't monopolise the GPU and starve decode requests. Each
+    chunk emits this on entry.
+
+    Fields:
+        chunk_index: 0-based index of this chunk within the request's prefill.
+        tokens_in_chunk: how many prompt tokens this chunk processes.
+        prefilled_so_far: prompt tokens already in the KV cache BEFORE this
+            chunk (so a consumer can paint an X/total progress bar; this chunk
+            will advance it to prefilled_so_far + tokens_in_chunk).
+        prompt_len: total prompt length, the denominator of the progress bar.
+    """
+    return Event(
+        event_type="prefill_chunk_start",
+        payload={
+            "request_id": request_id,
+            "chunk_index": chunk_index,
+            "tokens_in_chunk": tokens_in_chunk,
+            "prefilled_so_far": prefilled_so_far,
+            "prompt_len": prompt_len,
+        },
+    )
+
+
+def prefill_chunk_done(
+    request_id: str,
+    chunk_index: int,
+    tokens_in_chunk: int,
+    prefilled_so_far: int = 0,
+    prompt_len: int = 0,
+) -> Event:
+    """A chunk of a chunked prefill just finished.
+
+    ``prefilled_so_far`` here is the count AFTER this chunk's tokens landed in
+    the cache (== the previous prefilled_so_far + tokens_in_chunk). When it
+    equals ``prompt_len`` the prefill is complete and the request transitions
+    to DECODE (a ``prefill_done`` event follows).
+    """
+    return Event(
+        event_type="prefill_chunk_done",
+        payload={
+            "request_id": request_id,
+            "chunk_index": chunk_index,
+            "tokens_in_chunk": tokens_in_chunk,
+            "prefilled_so_far": prefilled_so_far,
+            "prompt_len": prompt_len,
+        },
+    )
+
+
 def decode_step(step_idx: int, batch: list[tuple[str, int, str]]) -> Event:
     """One batched decode iteration. `batch` is [(request_id, token_id, token_str)]."""
     return Event(
