@@ -241,11 +241,48 @@ class MultiHeadAttention(nn.Module):
         self.register_buffer("rope_cos", cos, persistent=False)
         self.register_buffer("rope_sin", sin, persistent=False)
 
+    def _sdpa_with_weights(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        attn_mask: torch.Tensor | None,
+        is_causal: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Explicit softmax attention that ALSO returns the attention weights.
+
+        ``F.scaled_dot_product_attention`` and our FA2 kernel both fuse the
+        softmax and never materialise the (S_q, S_k) weight matrix -- which is
+        the whole speed win, but means there is nothing for H2O to score. When
+        a score tracker is attached (eviction is active) we fall back to this
+        un-fused path so we can read the per-key attention mass. It is
+        mathematically identical to SDPA; the cost is materialising the weights
+        and an extra matmul, paid only while eviction is on.
+
+        Returns (out, weights) with out (B, NQ, S_q, D) and weights
+        (B, NQ, S_q, S_k).
+        """
+        scale = self.head_dim ** -0.5
+        scores = torch.matmul(q, k.transpose(-2, -1)) * scale  # (B, NQ, S_q, S_k)
+        if attn_mask is not None:
+            # Boolean mask, True == attend (the sliced-prefill case).
+            scores = scores.masked_fill(~attn_mask, float("-inf"))
+        elif is_causal:
+            S_q, S_k = scores.shape[-2], scores.shape[-1]
+            causal = torch.tril(
+                torch.ones(S_q, S_k, dtype=torch.bool, device=q.device)
+            )
+            scores = scores.masked_fill(~causal, float("-inf"))
+        weights = torch.softmax(scores, dim=-1)
+        out = torch.matmul(weights, v)
+        return out, weights
+
     def forward(
         self,
         x: torch.Tensor,
         kv_cache: "PagedRequestCache | list[PagedRequestCache] | None" = None,
         layer_idx: int | None = None,
+        return_attn_weights: bool = False,
     ) -> torch.Tensor:
         """
         Args:
@@ -258,9 +295,18 @@ class MultiHeadAttention(nn.Module):
                     different point in its own sequence, so RoPE is per-row.
             layer_idx: which layer slot in the cache to use. Required when
                 kv_cache is not None.
+            return_attn_weights: when True, return (output, attn_weights)
+                instead of just output, computed via the un-fused softmax path.
+                Independently, if the kv_cache carries a ``score_tracker``
+                attribute (H2O eviction is active) the weights are captured and
+                fed to that tracker as a side effect even when this is False --
+                that is how eviction observes attention mass without changing
+                model.forward's signature. With neither in play, the fast
+                SDPA/FA2 path runs unchanged (so existing tests are unaffected).
 
         Returns:
-            (B, S, H) -- to be added to the residual stream by the caller.
+            (B, S, H) -- to be added to the residual stream by the caller; OR
+            ((B, S, H), weights) when return_attn_weights is True.
         """
         # Dispatch to the batched-decode path when caller passes a list of
         # per-request caches. This is the Day 6 continuous-batching entry.
@@ -373,13 +419,27 @@ class MultiHeadAttention(nn.Module):
             # Broadcast to (S, S_total). True == attend.
             attn_mask = k_pos.unsqueeze(0) <= q_pos.unsqueeze(1)
             is_causal = False
-        # On CUDA, run our from-scratch FA2 kernel; SDPA stays the CPU fallback
-        # (and avoids importing Triton on CPU-only hosts -- hence the lazy
-        # import). The three masking cases map cleanly onto the kernel:
-        #   * decode  (attn_mask None, is_causal False) -> causal=False
-        #   * prefill (attn_mask None, is_causal True ) -> causal=True
-        #   * sliced  (bool attn_mask)                  -> additive -inf bias
-        if q.is_cuda:
+        # H2O hook: if the cache carries a score tracker, eviction is active and
+        # we MUST see the attention weights. Otherwise stay on the fast path.
+        tracker = getattr(kv_cache, "score_tracker", None) if kv_cache is not None else None
+        need_weights = return_attn_weights or tracker is not None
+
+        attn_weights = None
+        if need_weights:
+            # Un-fused softmax so the weights are available (CPU and CUDA alike).
+            attn_out, attn_weights = self._sdpa_with_weights(q, k, v, attn_mask, is_causal)
+            if tracker is not None:
+                # Accumulate per-key attention mass for this layer. Detached --
+                # we never backprop through the eviction policy.
+                tracker.update(layer_idx, attn_weights.detach())
+        elif q.is_cuda:
+            # On CUDA, run our from-scratch FA2 kernel; SDPA stays the CPU
+            # fallback (and avoids importing Triton on CPU-only hosts -- hence
+            # the lazy import). The three masking cases map cleanly onto the
+            # kernel:
+            #   * decode  (attn_mask None, is_causal False) -> causal=False
+            #   * prefill (attn_mask None, is_causal True ) -> causal=True
+            #   * sliced  (bool attn_mask)                  -> additive -inf bias
             from src.engine.kernels.flash_attention import flash_attention_forward
             if attn_mask is not None:
                 # Convert the boolean "True == attend" mask to the additive
@@ -399,7 +459,10 @@ class MultiHeadAttention(nn.Module):
         attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, self.num_heads * self.head_dim)
 
         # 8) Output projection mixes information across heads.
-        return self.o_proj(attn_out)
+        out = self.o_proj(attn_out)
+        if return_attn_weights:
+            return out, attn_weights
+        return out
 
     # -----------------------------------------------------------------------
     # Batched decode across multiple per-request KV caches (Day 6).

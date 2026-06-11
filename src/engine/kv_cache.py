@@ -349,6 +349,52 @@ class PagedKVCache:
         """
         return self._blocks[request_id]
 
+    def trim_request_blocks(self, request_id: str, keep_blocks: int) -> int:
+        """Free a request's blocks beyond the first `keep_blocks`, returning
+        them to the free pool. Used by KV-cache eviction (H2O) after it has
+        compacted the surviving tokens into the leading blocks.
+
+        Unlike `free_request` (which releases everything when a request
+        finishes), this is a PARTIAL free: the request stays alive with a
+        shorter block table. The freed blocks are added back to this request's
+        reservation so it can grow again later (eviction makes room, the
+        request keeps generating, eventually re-allocates -- the whole point of
+        serving sequences longer than the block budget).
+
+        Returns the number of physical blocks freed.
+        """
+        bt = self._blocks.get(request_id)
+        if bt is None:
+            raise RuntimeError(f"Request {request_id!r} not admitted.")
+        if keep_blocks >= len(bt):
+            return 0
+        freed = bt[keep_blocks:]
+        self._blocks[request_id] = bt[:keep_blocks]
+        for b in freed:
+            self.ref_count[b] -= 1
+            if self.ref_count[b] < 0:
+                raise RuntimeError(
+                    f"refcount underflow trimming block {b} of {request_id!r}"
+                )
+            if self.ref_count[b] == 0:
+                del self.ref_count[b]
+                self._free_blocks.add(b)
+                # Evicted tail blocks are decode-time blocks (refcount 1, no
+                # shared hash), but drop any hash entry defensively to match
+                # free_request's bookkeeping.
+                h = self.block_hashes.pop(b, None)
+                if h is not None and self.hash_to_block.get(h) == b:
+                    del self.hash_to_block[h]
+                if self.event_bus is not None:
+                    self.event_bus.emit(events.block_freed(
+                        request_id=request_id,
+                        physical_block_idx=b,
+                    ))
+        # Hand the capacity back as reservation so future appends can re-draw
+        # these slots (admission already counted them against this request).
+        self._reserved[request_id] = self._reserved.get(request_id, 0) + len(freed)
+        return len(freed)
+
     def num_shared_blocks(self) -> int:
         """Count physical blocks currently shared by 2+ requests.
 
