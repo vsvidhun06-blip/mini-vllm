@@ -381,8 +381,46 @@ class PagedRequestCache:
         # to layer N+1's seq_len read, which is the Day 5 bug.)
         self._seq_lens: list[int] = [0] * num_layers
 
+        # ---- Cached device tensors for the decode hot path (Day 17) --------
+        # Two values used inside attention came from Python ints/lists and were
+        # turned into CUDA tensors EVERY layer EVERY step:
+        #   * the block table (here, in .get())
+        #   * the per-row RoPE positions (attention._forward_decode_batched)
+        # Each `torch.tensor(py_list, device="cuda")` is a host->device copy
+        # from pageable memory. On the decode hot path that's pure overhead;
+        # worse, it makes the forward un-capturable as a CUDA graph (pageable
+        # H2D copies force a sync, which is illegal mid-capture). We cache both
+        # as persistent device tensors, rebuilt/updated only when their value
+        # actually changes -- which never happens inside a single captured
+        # step. The cached values are identical to what we copied before, so
+        # every existing parity test is unaffected.
+        self._bt_tensor: torch.Tensor | None = None
+        self._seqlen_tensors: dict[int, torch.Tensor] = {}
+        self._seqlen_vals: dict[int, int] = {}
+
     def seq_len(self, layer_idx: int = 0) -> int:
         return self._seq_lens[layer_idx]
+
+    def seq_len_tensor(self, layer_idx: int = 0) -> torch.Tensor:
+        """`seq_len(layer_idx)` as a cached 0-dim long tensor on the pool device.
+
+        Used by batched decode to build the per-row RoPE positions vector
+        WITHOUT a per-call ``torch.tensor([...], device="cuda")`` host->device
+        copy (see the __init__ note). The backing tensor is allocated once and
+        updated in place with ``fill_`` only when the value changes, so its
+        address is stable -- which is what CUDA-graph capture requires. The
+        numeric value is identical to the old Python-int path.
+        """
+        val = self._seq_lens[layer_idx]
+        t = self._seqlen_tensors.get(layer_idx)
+        if t is None:
+            t = torch.empty((), dtype=torch.long, device=self.pool.K_pool.device)
+            self._seqlen_tensors[layer_idx] = t
+            self._seqlen_vals[layer_idx] = -1  # force the first fill_ below
+        if self._seqlen_vals[layer_idx] != val:
+            t.fill_(val)
+            self._seqlen_vals[layer_idx] = val
+        return t
 
     def append(
         self,
@@ -447,7 +485,17 @@ class PagedRequestCache:
         """
         S = self._seq_lens[layer_idx]
         block_table = self.pool.get_block_table(self.request_id)
-        bt = torch.tensor(block_table, dtype=torch.long, device=self.pool.K_pool.device)
+        # Cache the block-table-as-device-tensor. Rebuild only on a length
+        # change (decode appends a fresh block when the tail fills); the table
+        # only ever grows and existing entries never move, so a length check is
+        # sufficient. Inside a captured CUDA-graph step we pre-allocate so the
+        # length never changes -> no host->device copy here during replay.
+        bt = self._bt_tensor
+        if bt is None or bt.shape[0] != len(block_table):
+            bt = torch.tensor(
+                block_table, dtype=torch.long, device=self.pool.K_pool.device
+            )
+            self._bt_tensor = bt
 
         # blocks_k: (n_blocks, block_size, NKV, D)
         blocks_k = self.pool.K_pool[layer_idx, bt]

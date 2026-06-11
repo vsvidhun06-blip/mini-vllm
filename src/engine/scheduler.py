@@ -169,6 +169,7 @@ class ContinuousBatchScheduler:
         spec_decode_k: int = 4,
         spec_decode_exit_layer: int = 8,
         spec_decode_observer: Callable[[int, int], None] | None = None,
+        use_cuda_graphs: bool = True,
     ) -> None:
         """
         Args:
@@ -235,6 +236,16 @@ class ContinuousBatchScheduler:
                 round. The metrics layer uses this to populate the
                 acceptance-rate histogram. None disables observation; the
                 spec decode path runs identically either way.
+            use_cuda_graphs: when True (default), the batched-decode forward is
+                routed through a CUDAGraphRunner whenever a graph matching the
+                current decode batch (size, bound caches, seq_len) has been
+                captured -- collapsing the step's hundreds of kernel launches
+                into one graph replay. When no graph matches, or on CPU, the
+                step runs eagerly and is byte-identical to the pre-graph path
+                (so every existing CPU test is unaffected). A runner is attached
+                via `self._graph_runner`; see src/engine/cuda_graph.py for why
+                live growing-length decode is served eagerly and the win is
+                demonstrated in the fixed-length benchmark.
 
         Two independent budgets:
             * max_batch_size: how many requests can run in one forward pass.
@@ -266,6 +277,14 @@ class ContinuousBatchScheduler:
         # helps if acceptance scales faster than depth.
         self.spec_decode_exit_layer = spec_decode_exit_layer
         self.spec_decode_observer = spec_decode_observer
+
+        # CUDA-graph decode acceleration. The flag gates routing; the runner is
+        # attached lazily/externally (e.g. by a benchmark or a serving setup
+        # that pre-captures graphs). It stays None during ordinary scheduler
+        # use, so the decode path is the eager one and existing tests see no
+        # behavioural change. See _decode_forward.
+        self.use_cuda_graphs = use_cuda_graphs
+        self._graph_runner = None  # type: ignore[assignment]
 
         # The KV pool. One big tensor shared across all requests. The pool
         # also gets the event_bus so block_allocated / block_freed fire
@@ -312,6 +331,31 @@ class ContinuousBatchScheduler:
             return self.token_decoder(token_id)
         except Exception:
             return ""
+
+    def _decode_forward(
+        self,
+        input_ids: torch.Tensor,
+        caches: list,
+    ) -> torch.Tensor:
+        """One batched-decode forward, graph-accelerated when possible.
+
+        Routes through the attached CUDAGraphRunner iff cuda graphs are enabled,
+        we're on CUDA, and the runner has a graph captured for EXACTLY this
+        decode batch (size + these cache objects + matching seq_len). Otherwise
+        runs the model eagerly. The eager branch is byte-identical to the
+        pre-graph code path, so on CPU (and whenever no graph matches) behaviour
+        is unchanged.
+        """
+        if (
+            self.use_cuda_graphs
+            and self.device.type == "cuda"
+            and self._graph_runner is not None
+            and self._graph_runner.can_replay(len(caches), caches)
+        ):
+            # The graph runs under its own captured no_grad context.
+            return self._graph_runner.replay(input_ids, caches)
+        with torch.no_grad():
+            return self.model(input_ids, kv_cache=caches)
 
     # ---- Public API ---------------------------------------------------
 
@@ -717,8 +761,7 @@ class ContinuousBatchScheduler:
                     device=self.device,
                 )
                 caches = [r.cache for r in decode_reqs]
-                with torch.no_grad():
-                    logits = self.model(input_ids, kv_cache=caches)  # (B, 1, V)
+                logits = self._decode_forward(input_ids, caches)  # (B, 1, V)
 
                 # Collect the per-row results first so we can emit ONE
                 # decode_step event covering the whole batch.

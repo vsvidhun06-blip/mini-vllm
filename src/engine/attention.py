@@ -469,11 +469,14 @@ class MultiHeadAttention(nn.Module):
         #    that position is the request's CURRENT cache length (before this
         #    layer appends). We gather a (B,) position vector and use it to
         #    index into the cos/sin table.
-        positions = torch.tensor(
-            [c.seq_len(layer_idx) for c in caches],
-            dtype=torch.long,
-            device=q.device,
-        )                                                     # (B,)
+        # Build the per-row positions WITHOUT a host->device copy: each cache
+        # hands back its seq_len as a cached device scalar (kv_cache.py), and we
+        # stack them on-device. The old `torch.tensor([...], device=...)` copied
+        # from pageable host memory every layer every step -- pure decode-hot-
+        # path overhead, and illegal inside a CUDA-graph capture. Same values.
+        positions = torch.stack(
+            [c.seq_len_tensor(layer_idx) for c in caches]
+        )                                                     # (B,) long, device
         cos = self.rope_cos[positions].to(dtype=q.dtype)      # (B, D)
         sin = self.rope_sin[positions].to(dtype=q.dtype)      # (B, D)
         # Same CUDA/CPU split as the single-cache path. Here the angle varies
