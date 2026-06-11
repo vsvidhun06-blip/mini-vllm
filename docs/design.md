@@ -244,3 +244,71 @@ server beyond the event stream.
 
 These are deliberate omissions for v0.1, not unknowns. v0.2 brings
 them in one at a time with the same parity-test discipline.
+
+## 10. v0.3 custom kernels: from-scratch Triton vs. vendor libraries
+
+v0.3 adds hand-written CUDA-path kernels — a fused RoPE kernel, a
+from-scratch FlashAttention-2 forward, and INT8 (W8A8) quantized
+projections — each as the CUDA path with the existing PyTorch op kept as
+the CPU fallback and the parity reference. Two findings from running them
+on real hardware (Colab T4, sm_75) are worth recording, because both are
+"the textbook result," not bugs.
+
+### 10.1 Our FlashAttention-2 is slower than `F.scaled_dot_product_attention`
+
+The from-scratch FA2 kernel reproduces SDPA's output to ~1e-5 but is
+**slower** than `F.scaled_dot_product_attention` on this hardware. That is
+expected, and chasing parity on speed was never the goal — understanding the
+algorithm was. The gap is structural:
+
+- **cuDNN / FA2 fusion.** SDPA dispatches to hand-written CUDA C++ backends
+  (cuDNN fused attention, or the official FlashAttention-2 kernels) that fuse
+  QK^T, the scale, the softmax, and PV into one tightly scheduled kernel with
+  optimal HBM↔SRAM movement. Our Triton version expresses the same math at a
+  higher level and leans on the compiler for that fusion.
+- **No persistent kernels.** The fast backends keep a fixed set of CTAs
+  resident and stream many tiles through them, amortising launch cost and
+  keeping every SM busy. We launch one program per `(batch, head, M-block)`
+  and exit, so for small/medium sizes launch overhead and partly-filled
+  "tail" waves dominate.
+- **No register-level tiling / pipelining tuning.** Production kernels stage
+  operands through registers + shared memory with multi-stage software
+  pipelining and tuned warp-level MMA schedules. We use Triton defaults and
+  never autotuned `BLOCK_M/BLOCK_N`, `num_warps`, or `num_stages` per
+  head-dim/arch.
+- **True fp32 by choice.** We set `allow_tf32=False` to hold the engine's
+  atol=1e-4 parity contract; SDPA is free to take faster reduced-/mixed-
+  precision tensor-core paths.
+
+Takeaway: matching a cuDNN/FA2 kernel needs persistent scheduling plus
+autotuned register tiling that a *readable* kernel deliberately omits. The
+deliverable is the correctness win and the algorithm walk-through; the speed
+gap is the cost of clarity. (The full reasoning also lives at the top of
+`src/engine/kernels/flash_attention.py`.)
+
+### 10.2 INT8 GEMM backend: `torch._int_mm`, not a Triton int8 `tl.dot`
+
+The first INT8 implementation used a Triton kernel with `tl.dot` on int8
+inputs. It **fails to compile on Turing (T4 / sm_75)**: Triton's
+`TritonGPUAccelerateMatmul` pass has no int8 MMA lowering for sm_75, so the
+int8 `tl.dot` errors. It would work on Ampere+/Ada, but T4 is the most common
+free-tier GPU, so "Ampere-only" is a bad default.
+
+The fix swaps the compute backend to **`torch._int_mm`**, PyTorch's native
+int8 matmul, which dispatches to cuBLAS/cuBLASLt int8 IMMA — supported on
+sm_75. Everything around it (per-tensor symmetric quantize/dequantize,
+`QuantizedLinear`, `QuantizedMultiHeadAttention`, `LlamaModel.quantize()`) is
+unchanged. `torch._int_mm` has hard shape constraints on CUDA — **M > 16** and
+**K, N multiples of 8** — so:
+
+- **Prefill** (large M = prompt length, K/N multiples of 8 for TinyLlama) takes
+  the true int8 path.
+- **Decode** (M == 1) violates M > 16, so it falls back to dequantizing the
+  still-int8-stored weight and doing an fp matmul. M == 1 is memory-bound
+  anyway, so dequant-on-read costs little, and the 4× weight-memory win holds
+  on both paths.
+
+This is a recurring lesson with custom kernels: the hardware's supported MMA
+shapes/dtypes — not the math — decide the implementation, and the portable,
+vendor-tuned primitive often beats the bespoke one once you account for which
+GPUs you actually run on.

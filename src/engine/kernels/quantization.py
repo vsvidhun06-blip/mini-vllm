@@ -1,5 +1,5 @@
 """
-INT8 (W8A8) quantization primitives + a Triton int8 GEMM.
+INT8 (W8A8) quantization primitives + a native-PyTorch int8 GEMM.
 
 WHY QUANTIZE
 ------------
@@ -33,19 +33,41 @@ For a linear layer  y = x @ W^T  with x quantized at scale_a and W at scale_b:
     x ~= q_a * scale_a,   W ~= q_b * scale_b
     y ~= (q_a @ q_b^T) * scale_a * scale_b
 
-So the kernel accumulates the int8*int8 products into int32, then multiplies
-the int32 result by the two scalar scales and casts to fp16 on the way out.
+So we compute the int8*int8 product into int32, multiply by the two scalar
+scales, and cast to fp16.
+
+WHY torch._int_mm AND NOT A TRITON KERNEL
+-----------------------------------------
+The original implementation here was a hand-written Triton int8 GEMM using
+``tl.dot`` with int8 inputs. That fails to compile on Turing GPUs (T4 / sm_75):
+Triton's ``TritonGPUAccelerateMatmul`` pass has no int8 MMA lowering for sm_75,
+so the int8 ``tl.dot`` errors out. (It works on Ampere+/Ada, but T4 is the most
+common free-tier GPU, so "works only on Ampere+" is a poor default.)
+
+``torch._int_mm`` is PyTorch's native int8 matmul. It dispatches to cuBLAS /
+cuBLASLt int8 IMMA, which IS supported on sm_75, so it runs on T4. We use it as
+the compute backend and keep everything around it (quantize/dequantize,
+``QuantizedLinear``, ``QuantizedMultiHeadAttention``) unchanged.
+
+``torch._int_mm`` has hard shape constraints on CUDA, though:
+    * the M dimension must be > 16,
+    * K and N must both be multiples of 8.
+TinyLlama's projection K/N (2048, 256, ...) are all multiples of 8, and prefill
+has a large M (the prompt length), so prefill takes the fast int8 path. DECODE
+has M == 1, which violates M > 16 -- there we fall back to dequantizing the
+(still int8-stored) weight and doing an fp matmul. Either way the weights stay
+4x smaller in memory; only the GEMM compute path differs. M == 1 is memory-bound
+anyway, so dequant-on-read costs little and the int8 storage win is preserved.
 """
 from __future__ import annotations
 
 import torch
-import triton
-import triton.language as tl
+import torch.nn.functional as F
 
-# GEMM tile sizes (per the phase spec). 64x64 output tile, 32-deep K steps.
-BLOCK_M = 64
-BLOCK_N = 64
-BLOCK_K = 32
+# torch._int_mm constraints on CUDA: M must exceed this, and K/N must be
+# multiples of INT_MM_ALIGN. Below these we use the dequant fallback.
+_INT_MM_MIN_M = 16
+_INT_MM_ALIGN = 8
 
 
 def quantize_tensor(
@@ -81,57 +103,6 @@ def dequantize_tensor(x_int8: torch.Tensor, scale: torch.Tensor) -> torch.Tensor
     return x_int8.to(torch.float32) * scale
 
 
-@triton.jit
-def int8_matmul_kernel(
-    A, B, C,                       # A:(M,K) int8, B:(K,N) int8, C:(M,N) fp16
-    M, N, K,
-    scale_a, scale_b,              # fp32 scalars: activation + weight scales
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    # One program computes a BLOCK_M x BLOCK_N output tile.
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = tl.arange(0, BLOCK_K)
-
-    a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-
-    # int32 accumulator -- int8*int8 sums can't overflow int32 for K up to ~2^17.
-    acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
-
-    for k0 in range(0, K, BLOCK_K):
-        k_mask = offs_k[None, :] + k0 < K
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_m[:, None] < M) & k_mask,
-            other=0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=((offs_k[:, None] + k0) < K) & (offs_n[None, :] < N),
-            other=0,
-        )
-        # int8 @ int8 -> int32 accumulation on the tensor cores.
-        acc = tl.dot(a, b, acc=acc, out_dtype=tl.int32)
-        a_ptrs += BLOCK_K * stride_ak
-        b_ptrs += BLOCK_K * stride_bk
-
-    # Rescale int32 -> fp32 with the two per-tensor scales, store as fp16.
-    c = acc.to(tl.float32) * scale_a * scale_b
-    c = c.to(tl.float16)
-
-    c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
-    tl.store(c_ptrs, c, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
-
-
 def quantized_linear(
     x: torch.Tensor,
     weight_int8: torch.Tensor,
@@ -146,8 +117,7 @@ def quantized_linear(
         scale_w: 0-dim float tensor, the weight's per-tensor scale.
 
     Returns:
-        (..., N) fp16 tensor (the kernel rescales to fp16, per spec). Callers
-        that want a different dtype should cast.
+        (..., N) fp16 tensor. Callers that want a different dtype should cast.
     """
     assert x.is_cuda, "quantized_linear is CUDA-only; use a dequant fallback on CPU"
     *batch, K = x.shape
@@ -157,24 +127,24 @@ def quantized_linear(
     x2d = x.reshape(-1, K)
     M = x2d.shape[0]
 
-    # Runtime activation quantization (per-tensor symmetric, same scheme as W).
-    x_int8, scale_x = quantize_tensor(x2d)
+    # torch._int_mm only accepts M > 16 and K, N multiples of 8 (see module
+    # docstring). When that holds -- prefill, where M is the prompt length --
+    # take the true int8 path.
+    if M > _INT_MM_MIN_M and K % _INT_MM_ALIGN == 0 and N % _INT_MM_ALIGN == 0:
+        # Runtime activation quantization (per-tensor symmetric, same scheme as W).
+        x_int8, scale_x = quantize_tensor(x2d)
+        # _int_mm computes A @ B with A:(M,K) int8, B:(K,N) int8 -> (M,N) int32.
+        # The weight is stored (N,K); .t() gives the (K,N) column-major view
+        # cuBLAS wants for B, so no copy is needed. x_int8 is freshly produced
+        # by quantize_tensor and is therefore already contiguous (row-major).
+        acc_int32 = torch._int_mm(x_int8, weight_int8.t())
+        out = acc_int32.to(torch.float32) * (scale_x * scale_w)
+        out = out.to(torch.float16)
+    else:
+        # Small-M / odd-shape fallback (notably decode, M == 1): dequantize the
+        # int8 weight and do an fp matmul on the full-precision activation.
+        # Weights stay int8 in memory; only this GEMM runs in fp.
+        w = dequantize_tensor(weight_int8, scale_w).to(x2d.dtype)
+        out = F.linear(x2d, w).to(torch.float16)
 
-    # The kernel wants B as (K, N); the stored weight is (N, K), so transpose.
-    # This is a strided view -- the kernel reads it through explicit strides.
-    B = weight_int8.t()
-
-    out = torch.empty((M, N), device=x.device, dtype=torch.float16)
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-    int8_matmul_kernel[grid](
-        x_int8, B, out,
-        M, N, K,
-        float(scale_x), float(scale_w),
-        x_int8.stride(0), x_int8.stride(1),
-        B.stride(0), B.stride(1),
-        out.stride(0), out.stride(1),
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
-        BLOCK_K=BLOCK_K,
-    )
     return out.reshape(*batch, N)

@@ -56,6 +56,45 @@ grid = (batch, heads, ceil(S_q / BLOCK_M)). Each program owns one BLOCK_M
 slice of query rows for one (batch, head) and streams the whole K/V sequence.
 GQA is handled by the caller (K/V are already head-expanded to match Q), so
 this kernel only ever sees standard multi-head shapes.
+
+PERFORMANCE: WHY THIS IS SLOWER THAN F.scaled_dot_product_attention
+-------------------------------------------------------------------
+Measured on the benchmark, this kernel is SLOWER than PyTorch's
+``F.scaled_dot_product_attention`` (SDPA), and that is expected. The point of
+writing FA2 from scratch here is to understand the algorithm end to end, not to
+beat a vendor library. The gap comes from several layers of optimisation that
+SDPA has and this kernel does not:
+
+  1. cuDNN / FlashAttention-2 CUDA fusion. SDPA dispatches to hand-written
+     CUDA C++ backends (cuDNN's fused attention, or the official FA2 kernels)
+     that fuse the QK^T matmul, the scale, the softmax, and the PV matmul into
+     one tightly-scheduled kernel with optimal HBM<->SRAM data movement. Ours
+     expresses the same math in Triton at a higher level and leaves a lot of
+     that fusion/scheduling to the compiler.
+
+  2. No persistent kernels. SDPA's backends use persistent / warp-specialised
+     designs where a fixed set of CTAs stays resident and streams many tiles,
+     amortising launch cost and keeping every SM busy. We launch one program
+     per (batch, head, M-block) and exit; for small and medium problem sizes
+     the per-launch overhead and the "tail" of partly-filled waves dominate the
+     runtime.
+
+  3. No register-level tiling / pipelining tuning. The fast backends carefully
+     stage operands through registers and shared memory with multi-stage
+     software pipelining (double/triple buffering) and tuned warp-level MMA
+     schedules. We use Triton's defaults and never autotuned BLOCK_M/BLOCK_N,
+     ``num_warps``, or ``num_stages`` per head-dim/arch, so memory loads and the
+     two matmuls are not overlapped as aggressively.
+
+  4. We deliberately run true fp32 (``allow_tf32=False``) to hold the engine's
+     atol=1e-4 parity contract, whereas SDPA is free to pick faster reduced- or
+     mixed-precision tensor-core paths.
+
+So the takeaway is not "Triton is slow" -- it's that matching a cuDNN/FA2
+production kernel needs persistent scheduling + autotuned register tiling that a
+readable from-scratch kernel intentionally omits. See docs/design.md for the
+fuller write-up. The correctness win (we reproduce SDPA's output to ~1e-5) is
+the deliverable; the speed gap is the cost of clarity.
 """
 from __future__ import annotations
 
