@@ -71,9 +71,11 @@ from typing import TYPE_CHECKING
 import torch
 
 from src.engine import events
+from src.engine.radix_cache import RadixCache
 
 if TYPE_CHECKING:
     from src.engine.events import EventBus
+    from src.engine.radix_cache import RadixNode
 
 
 class PagedKVCache:
@@ -406,6 +408,214 @@ class PagedKVCache:
         owned; blocks with no ref_count entry are free.
         """
         return sum(1 for c in self.ref_count.values() if c >= 2)
+
+
+class RadixPagedKVCache(PagedKVCache):
+    """A PagedKVCache whose prefix cache is a radix tree (SGLang-style).
+
+    Drop-in for PagedKVCache: same constructor and the same
+    can_admit / admit_request / allocate_block / free_request / get_block_table
+    surface, so PagedRequestCache and the attention code work over it unchanged.
+    The only difference is the prefix-sharing mechanism.
+
+    What changes vs the flat-hash base class:
+
+      * Sharing unit. The base class shares fixed 16-token blocks keyed by a
+        chained block hash. Here a RadixCache stores the actual token paths, so
+        prefixes are shared at TOKEN granularity and divergent prompts split at
+        their first differing token automatically.
+
+      * RETENTION. The base class evicts a cached block the instant its last
+        live request frees it (no-LRU-retention). A completed request's prefix
+        therefore can't be reused by a LATER request. This cache INSERTS a
+        completed request's block-aligned prefix into the tree and KEEPS those
+        blocks resident (out of the free list) until LRU eviction reclaims
+        them. That is what lets a stream of requests sharing one system prompt
+        reuse it across completions -- the whole point of the radix cache.
+
+    Block lifecycle / accounting:
+
+      pool.ref_count[phys] counts LIVE-REQUEST references only. A block held by
+      the tree but no live request has NO ref_count entry and is NOT in the free
+      list (it lives in self._tree_blocks). A block can be both: a live request
+      that reused a cached prefix bumps ref_count while the block stays
+      tree-owned. A block returns to the free list only when it is neither live
+      (ref_count hits 0) nor tree-owned (evicted, or never inserted -- e.g. the
+      partial tail and decode-grown blocks).
+
+    Interface note: admit_request takes an extra optional `token_ids` (the
+    prompt token ids). When provided (and prefix caching is on) it drives radix
+    matching; when omitted it falls back to all-fresh allocation, so calling
+    this exactly like the base class still works.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.radix = RadixCache()
+        # Blocks currently referenced by the tree (evictable when not also
+        # locked by a live match). Kept out of the free list while resident.
+        self._tree_blocks: set[int] = set()
+        # Per-request state needed at completion time.
+        self._request_tokens: dict[str, list[int]] = {}
+        self._request_match_node: dict[str, "RadixNode | None"] = {}
+
+    # ---- admission accounting (now eviction-aware) ----------------------
+
+    def _live_blocks(self) -> set[int]:
+        """Every physical block currently held by some live request."""
+        live: set[int] = set()
+        for bt in self._blocks.values():
+            live.update(bt)
+        return live
+
+    def num_evictable_blocks(self) -> int:
+        """Tree-owned blocks not pinned by a live request -- reclaimable now."""
+        return len(self._tree_blocks - self._live_blocks())
+
+    def can_admit(self, total_blocks_needed: int) -> bool:
+        """Like the base class, but evictable tree blocks count as available --
+        admit_request will reclaim them on demand."""
+        return self.num_free_blocks() + self.num_evictable_blocks() >= total_blocks_needed
+
+    def _reclaim_from_tree(self, n_needed: int) -> None:
+        """Evict LRU tree leaves until at least `n_needed` blocks are free."""
+        deficit = n_needed - len(self._free_blocks)
+        if deficit <= 0:
+            return
+        freed = self.radix.evict_lru(deficit)
+        for phys in freed:
+            self._tree_blocks.discard(phys)
+            # Evicted tree blocks carry no live ref (locked nodes never evict),
+            # so they go straight back to the free list.
+            if self.ref_count.get(phys, 0) == 0:
+                self.ref_count.pop(phys, None)
+                self._free_blocks.add(phys)
+
+    # ---- admit / free (radix-backed) ------------------------------------
+
+    def admit_request(
+        self,
+        request_id: str,
+        prefill_blocks_needed: int,
+        total_blocks_needed: int,
+        prefill_block_hashes=None,           # accepted for signature parity; unused
+        token_ids=None,
+    ) -> int:
+        """Admit a request, reusing a matched radix prefix where possible.
+
+        Returns the number of prefill blocks satisfied by the cache (hits).
+        """
+        if request_id in self._blocks:
+            raise RuntimeError(f"Request {request_id!r} already admitted.")
+
+        # Fall back to all-fresh when caching is off or we weren't given tokens.
+        use_radix = self.enable_prefix_cache and token_ids is not None
+        bs = self.block_size
+
+        reused_phys: list[int] = []
+        match_node = None
+        if use_radix:
+            token_ids = list(token_ids)
+            matched_len, matched_blocks, match_node = self.radix.match_node(token_ids)
+            reusable = matched_len // bs                       # whole blocks only
+            reusable = min(reusable, prefill_blocks_needed)
+            # If the prompt is an exact multiple of block_size and the WHOLE
+            # prompt matched, leave one block un-reused so prefill has a token to
+            # run on (mirrors the scheduler's forced-fresh last block). Harmless
+            # in pure-simulation use; required when wired to a real forward.
+            prompt_len = len(token_ids)
+            if reusable == prefill_blocks_needed and prompt_len % bs == 0:
+                reusable -= 1
+            # matched_blocks is per-token; the physical block for whole block i
+            # is the entry at that block's first token.
+            reused_phys = [matched_blocks[i * bs] for i in range(reusable)]
+
+        fresh_needed = prefill_blocks_needed - len(reused_phys)
+        # Reclaim from the tree if the free list can't cover the fresh blocks
+        # plus the reservation we're about to make.
+        self._reclaim_from_tree(fresh_needed)
+        if self.num_free_blocks() < total_blocks_needed - len(reused_phys):
+            # Try harder: reclaim enough for the full reservation too.
+            self._reclaim_from_tree(total_blocks_needed - len(reused_phys))
+
+        allocated: list[int] = []
+        hits = 0
+        # 1) Reused (cache-hit) blocks: bump the live ref; they stay tree-owned.
+        for logical_idx, phys in enumerate(reused_phys):
+            self.ref_count[phys] = self.ref_count.get(phys, 0) + 1
+            allocated.append(phys)
+            hits += 1
+            if self.event_bus is not None:
+                self.event_bus.emit(events.block_allocated(
+                    request_id=request_id, physical_block_idx=phys,
+                    logical_idx=logical_idx, shared=True,
+                ))
+        # 2) Fresh blocks for the non-cached remainder of the prefill.
+        for j in range(fresh_needed):
+            phys = self._free_blocks.pop()
+            self.ref_count[phys] = 1
+            allocated.append(phys)
+            if self.event_bus is not None:
+                self.event_bus.emit(events.block_allocated(
+                    request_id=request_id, physical_block_idx=phys,
+                    logical_idx=len(reused_phys) + j, shared=False,
+                ))
+
+        self._blocks[request_id] = allocated
+        self._reserved[request_id] = total_blocks_needed - prefill_blocks_needed
+        self._request_tokens[request_id] = list(token_ids) if use_radix else []
+        self._request_match_node[request_id] = match_node    # locked by match_node
+        return hits
+
+    def free_request(self, request_id: str) -> None:
+        """Complete a request: INSERT its block-aligned prefix into the tree
+        (so later requests can reuse it), then release its live block refs.
+
+        Blocks the tree now owns stay resident; blocks nobody references
+        (partial tail, decode-grown blocks, or evicted prefixes) return to the
+        free pool. This replaces the base class's evict-on-last-free policy.
+        """
+        # Unlock the prefix this request matched at admit (split-safe: we stored
+        # the node object, so an intervening edge split doesn't desync the lock).
+        node = self._request_match_node.pop(request_id, None)
+        if node is not None:
+            self.radix.dec_ref_path(node)
+
+        token_ids = self._request_tokens.pop(request_id, None)
+        bt = self._blocks.pop(request_id, [])
+
+        # Insert the block-aligned prompt prefix into the tree, mapping each
+        # token to the physical block covering it. Only full blocks we actually
+        # hold are insertable.
+        if self.enable_prefix_cache and token_ids:
+            n_full = min(len(token_ids) // self.block_size, len(bt))
+            aligned_len = n_full * self.block_size
+            if aligned_len > 0:
+                per_token = [bt[t // self.block_size] for t in range(aligned_len)]
+                self.radix.insert(tuple(token_ids[:aligned_len]), per_token)
+                self._tree_blocks.update(per_token)
+
+        # Release live refs. A block hitting ref 0 returns to free ONLY if the
+        # tree doesn't own it.
+        for b in bt:
+            self.ref_count[b] -= 1
+            if self.ref_count[b] < 0:
+                raise RuntimeError(
+                    f"refcount underflow on block {b} freeing {request_id!r}"
+                )
+            if self.ref_count[b] == 0:
+                del self.ref_count[b]
+                if b not in self._tree_blocks:
+                    self._free_blocks.add(b)
+                    if self.event_bus is not None:
+                        self.event_bus.emit(events.block_freed(
+                            request_id=request_id, physical_block_idx=b,
+                        ))
+        self._reserved.pop(request_id, None)
+
+    def num_cached_prefix_blocks(self) -> int:
+        """Distinct blocks the radix tree currently retains (metrics)."""
+        return len(self._tree_blocks)
 
 
 class PagedRequestCache:
