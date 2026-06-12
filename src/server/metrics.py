@@ -212,6 +212,31 @@ def observe_cuda_graph(hit: bool) -> None:
     CUDA_GRAPH_HITS_TOTAL.labels(outcome="hit" if hit else "miss").inc()
 
 
+# SLA scheduling: TTFT deadline misses. The counter is the headline SLA
+# violation signal; the histogram shows HOW LATE misses were (tail behaviour).
+# Both stay at 0 unless the SLA scheduler is running with TTFT deadlines set.
+DEADLINE_MISSES_TOTAL = Counter(
+    "mini_vllm_deadline_misses",
+    "Requests that missed their TTFT deadline under the SLA scheduler.",
+)
+DEADLINE_MISS_MS = Histogram(
+    "mini_vllm_deadline_miss_ms",
+    "How far past the TTFT deadline a missed request was, in milliseconds.",
+    buckets=[10, 25, 50, 100, 250, 500, 1000, 2500],
+)
+
+
+def observe_deadline_miss(missed_by_ms: float) -> None:
+    """Record one TTFT deadline miss (count + how late it was).
+
+    Wired into SLAScheduler via its `deadline_miss_callback` hook so the engine
+    stays free of any prometheus dependency.
+    """
+    DEADLINE_MISSES_TOTAL.inc()
+    if missed_by_ms > 0:
+        DEADLINE_MISS_MS.observe(missed_by_ms)
+
+
 def observe_spec_decode_round(accepted: int, k: int) -> None:
     """Record one spec-decode round's acceptance ratio.
 

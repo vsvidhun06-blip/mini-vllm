@@ -76,6 +76,11 @@ from src.engine.lora import LoRAManager
 from src.engine.lora_model import LoRALlamaModel, random_adapter_weights
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 from src.engine.scheduler import ContinuousBatchScheduler
+from src.engine.sla_scheduler import (
+    SLAScheduler,
+    parse_priority,
+    sla_scheduler_enabled,
+)
 from src.server import metrics
 
 # The visualiser is a single static HTML file. FileResponse re-reads on
@@ -149,6 +154,17 @@ def _on_token(request_id: str, token_id: int, token_str: str, step_idx: int) -> 
             "token_str": token_str,
             "step": step_idx,
         },
+        request_id,
+    )
+
+
+def _on_deadline_miss(request_id: str, missed_by_ms: float) -> None:
+    """SLAScheduler hook: a request blew its TTFT deadline. Surface it on the
+    request's own stream (if any) so a client can observe the SLA violation,
+    and record it for the metrics layer."""
+    metrics.observe_deadline_miss(missed_by_ms)
+    _push_to_stream(
+        {"request_id": request_id, "deadline_miss_ms": missed_by_ms},
         request_id,
     )
 
@@ -249,8 +265,10 @@ def _init_engine() -> None:
     # the old single-shot full-prefill behaviour.
     chunk_size = int(os.environ.get("CHUNK_SIZE", "256"))
 
-    _scheduler = ContinuousBatchScheduler(
-        model,
+    # Shared scheduler kwargs. The SLA scheduler is a drop-in subclass, so when
+    # ENABLE_SLA_SCHEDULER is set we construct it with the same arguments plus a
+    # deadline-miss hook; otherwise the default FIFO engine is built unchanged.
+    sched_kwargs = dict(
         max_batch_size=8,
         num_blocks=64,
         block_size=16,
@@ -263,6 +281,14 @@ def _init_engine() -> None:
         spec_decode_observer=metrics.observe_spec_decode_round,
         cuda_graph_observer=metrics.observe_cuda_graph,
     )
+    if sla_scheduler_enabled():
+        _scheduler = SLAScheduler(
+            model,
+            deadline_miss_callback=_on_deadline_miss,
+            **sched_kwargs,
+        )
+    else:
+        _scheduler = ContinuousBatchScheduler(model, **sched_kwargs)
 
     # Single pumper thread for the lifetime of the process. Daemon so it
     # doesn't block interpreter shutdown if the user Ctrl-Cs uvicorn.
@@ -287,6 +313,11 @@ class GenerateRequest(BaseModel):
     # tokens per round and verifies them against the full model. See
     # _speculative_generate for the (buffered, demo) path and its caveats.
     speculative_k: int = 0
+    # SLA scheduling hints. Only honoured when the engine was started with the
+    # SLA scheduler (ENABLE_SLA_SCHEDULER); ignored by the default FIFO engine.
+    # priority is one of "interactive" | "batch" | "background".
+    priority: str = "interactive"
+    ttft_deadline_ms: float | None = None
 
 
 class AdapterRequest(BaseModel):
@@ -334,7 +365,8 @@ class GenerateResponse(BaseModel):
 
 
 async def _stream_tokens_for_request(
-    prompt: str, max_tokens: int, adapter_id: str | None = None
+    prompt: str, max_tokens: int, adapter_id: str | None = None,
+    priority: str = "interactive", ttft_deadline_ms: float | None = None,
 ) -> AsyncIterator[dict]:
     """Submit one prompt; yield per-token events until done."""
     assert _scheduler is not None and _tokenizer is not None
@@ -354,14 +386,29 @@ async def _stream_tokens_for_request(
         # internally in add_request.
         input_ids = _tokenizer(prompt, return_tensors="pt")["input_ids"]
         with _sched_lock:
-            _scheduler.add_request(
-                request_id=request_id,
-                prompt_ids=input_ids,
-                max_new_tokens=max_tokens,
-                eos_token_id=_tokenizer.eos_token_id,
-                prompt_text=prompt,
-                adapter_id=adapter_id,
-            )
+            # The SLA scheduler takes priority/deadline kwargs; the FIFO engine
+            # does not. Pass them only when the SLA scheduler is in use so the
+            # default path is byte-identical to before.
+            if isinstance(_scheduler, SLAScheduler):
+                _scheduler.add_request(
+                    request_id=request_id,
+                    prompt_ids=input_ids,
+                    max_new_tokens=max_tokens,
+                    eos_token_id=_tokenizer.eos_token_id,
+                    prompt_text=prompt,
+                    adapter_id=adapter_id,
+                    priority=parse_priority(priority),
+                    ttft_deadline_ms=ttft_deadline_ms,
+                )
+            else:
+                _scheduler.add_request(
+                    request_id=request_id,
+                    prompt_ids=input_ids,
+                    max_new_tokens=max_tokens,
+                    eos_token_id=_tokenizer.eos_token_id,
+                    prompt_text=prompt,
+                    adapter_id=adapter_id,
+                )
         _pump_wakeup.set()
 
         while True:
@@ -505,7 +552,10 @@ def create_app() -> FastAPI:
 
         request_id: str | None = None
         tokens: list[int] = []
-        async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens, req.adapter_id):
+        async for ev in _stream_tokens_for_request(
+            req.prompt, req.max_tokens, req.adapter_id,
+            priority=req.priority, ttft_deadline_ms=req.ttft_deadline_ms,
+        ):
             if request_id is None and "request_id" in ev:
                 request_id = ev["request_id"]
             if "token_id" in ev:
@@ -534,7 +584,10 @@ def create_app() -> FastAPI:
         _validate_adapter(req.adapter_id)
 
         async def sse() -> AsyncIterator[str]:
-            async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens, req.adapter_id):
+            async for ev in _stream_tokens_for_request(
+                req.prompt, req.max_tokens, req.adapter_id,
+                priority=req.priority, ttft_deadline_ms=req.ttft_deadline_ms,
+            ):
                 yield f"data: {json.dumps(ev)}\n\n"
 
         return StreamingResponse(sse(), media_type="text/event-stream")
