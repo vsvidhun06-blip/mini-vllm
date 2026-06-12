@@ -68,17 +68,47 @@ Scope cuts for v0.3 (documented honestly):
     pessimistically allocates blocks for K+1 positions, and frees any
     excess on partial rejection. Correct but a touch wasteful.
 
-Public surface:
+Two implementations live in this file:
+
+  A. The v0.3 GREEDY self-speculation path (the function surface below).
+     This is what the ContinuousBatchScheduler drives. It is byte-exact
+     under greedy decoding -- argmax agreement, no rejection sampling.
+
+  B. The TRUE draft/target speculative decoder (the class surface below),
+     added in v0.5. A small DRAFT model proposes K tokens *with their
+     probabilities*; the large TARGET model verifies all K in one forward;
+     the exact acceptance-rejection rule of Leviathan et al. 2023 (their
+     Algorithm 1) accepts a prefix and, on the first rejection, resamples
+     from the adjusted residual distribution max(0, p_target - p_draft).
+     This preserves the TARGET model's sampling distribution exactly -- not
+     just under greedy, but at any temperature -- which is the property
+     greedy self-speculation cannot give you.
+
+  The two coexist: A stays the scheduler's path (it needs no second model
+  and integrates with the paged cache); B is the general algorithm, wired
+  to the server via `speculative_k` and exercised by test_spec_decode.py.
+
+Public surface (A -- greedy self-spec functions):
   early_exit_forward(model, input_ids, kv_cache, n_layers) -> logits
   draft_k_tokens(model, request_cache, last_token_id, k, n_draft_layers) -> list[int]
   verify_full_forward(model, request_cache, last_token_id, draft_tokens) -> logits
   spec_decode_step(model, request_cache, last_token_id, k, eos_token_id, max_emit, n_draft_layers) -> (list[int], int)
+
+Public surface (B -- draft/target acceptance-rejection):
+  DraftModel  (Protocol):  propose(input_ids, k, kv_cache) -> (token_ids, draft_probs)
+  TargetModel (Protocol):  verify(input_ids, draft_tokens, kv_cache) -> target_probs
+  speculative_sample(draft_tokens, draft_probs, target_probs, generator) -> (tokens, n_accepted)
+  SpeculativeDecoder(draft_model, target_model, k).decode_step(input_ids, kv_cache) -> tokens
+  TinyDraftModel(small_model)         -- a smaller LlamaModel as the draft
+  FullModelTarget(model)              -- a LlamaModel as the verifying target
+  SelfSpecDraftModel(model, n_layers) -- the early-exit draft, as a DraftModel
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import torch
+import torch.nn.functional as F
 
 if TYPE_CHECKING:
     from src.engine.kv_cache import PagedRequestCache
@@ -502,3 +532,361 @@ def spec_decode_step(
     rewind_cache(request_cache, pre_seq_len + e)
 
     return emit_truncated, accepted
+
+
+# ===========================================================================
+# PART B: true draft/target speculative decoding (Leviathan et al. 2023).
+# ===========================================================================
+#
+# Everything above is GREEDY self-speculation: one model, early exit, argmax
+# agreement. The code below is the GENERAL algorithm with a separate draft
+# model and exact acceptance-rejection sampling. It does not touch the paged
+# cache or the scheduler; it works on plain (1, S) token tensors so it can be
+# unit-tested on CPU with random-weight tiny models and a RandomDraftModel.
+#
+# The contract between the two model roles:
+#
+#   draft.propose(context, k)  -> (x_1..x_K, q_1..q_K)
+#       The draft autoregressively samples K tokens. q_i is the FULL
+#       categorical distribution (over the whole vocab) it sampled x_i from.
+#       We need the full q_i, not just q_i(x_i), to build the residual
+#       distribution on rejection.
+#
+#   target.verify(context, x_1..x_K) -> p_1..p_{K+1}
+#       The target runs ONCE on [context, x_1, ..., x_K] (K+1 new logit
+#       positions thanks to the causal mask) and returns p_i, the target's
+#       distribution for the i-th slot. p_{K+1} is the "bonus" distribution
+#       used only if every draft token is accepted.
+#
+# Why this is more than greedy self-spec can do: the accept/resample rule
+# below makes the emitted tokens distributed EXACTLY as if sampled directly
+# from the target at the chosen temperature (Leviathan Theorem 1). Greedy
+# self-spec only matches greedy (temperature 0) decoding.
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class DraftModel(Protocol):
+    """A cheap model that proposes K candidate tokens with their probabilities.
+
+    Implementations: TinyDraftModel (a smaller LlamaModel), SelfSpecDraftModel
+    (early-exit of the target), and RandomDraftModel (draft_model.py, tests).
+    """
+
+    def propose(
+        self, input_ids: torch.Tensor, k: int, kv_cache=None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Given context `input_ids` (1, S), propose `k` next tokens.
+
+        Returns:
+            token_ids:   (K,) int64 -- the proposed tokens, in order.
+            draft_probs: (K, V) float -- row i is the categorical q_i over the
+                whole vocabulary that token_ids[i] was sampled from.
+        """
+        ...
+
+
+@runtime_checkable
+class TargetModel(Protocol):
+    """The large model that verifies a draft in a single forward pass."""
+
+    def verify(
+        self, input_ids: torch.Tensor, draft_tokens: torch.Tensor, kv_cache=None
+    ) -> torch.Tensor:
+        """Run the target on [input_ids, draft_tokens] and return the per-slot
+        target distributions.
+
+        Returns:
+            target_probs: (K+1, V) float -- row i is p_i, the target's
+                distribution for slot i. Rows 0..K-1 line up with the K draft
+                tokens; row K is the bonus distribution (used iff all accepted).
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# speculative_sample -- the acceptance-rejection core (Leviathan Algorithm 1).
+# ---------------------------------------------------------------------------
+#
+# Pulled out as a free function (rather than buried in SpeculativeDecoder) so
+# the math is testable in isolation with hand-built p/q tensors -- which is
+# exactly what test_spec_decode.py does to confirm the emitted distribution.
+#
+# The rule, for each draft token x_i (i = 0..K-1):
+#   r ~ Uniform[0, 1)
+#   accept x_i  iff  r < min(1, p_i(x_i) / q_i(x_i))
+#   on the FIRST rejection at i: emit a token sampled from the residual
+#       distribution  norm(max(0, p_i - q_i))  and STOP.
+#   if all K accepted: emit a bonus token sampled from p_{K+1}.
+#
+# Guaranteed progress: even a position-0 rejection still emits the resampled
+# token, so the return list always has length n_accepted + 1 >= 1.
+# ---------------------------------------------------------------------------
+
+
+def speculative_sample(
+    draft_tokens: torch.Tensor,
+    draft_probs: torch.Tensor,
+    target_probs: torch.Tensor,
+    generator: torch.Generator | None = None,
+) -> tuple[list[int], int]:
+    """Run Leviathan acceptance-rejection over a drafted block.
+
+    Args:
+        draft_tokens: (K,) int64, the draft's proposed tokens.
+        draft_probs:  (K, V) float, q_i over the vocab for each draft token.
+        target_probs: (K+1, V) float, p_1..p_{K+1} from the target's verify.
+        generator: optional torch.Generator for reproducible sampling (CPU
+            tests pass one; the server leaves it None to use the global RNG).
+
+    Returns:
+        (emitted_tokens, n_accepted) where emitted_tokens has length
+        n_accepted + 1 (>= 1, guaranteed progress) and n_accepted is the
+        number of draft tokens accepted before the first rejection (== K if
+        all were accepted and the bonus token was appended).
+    """
+    k = int(draft_tokens.shape[0])
+    emitted: list[int] = []
+
+    for i in range(k):
+        xi = int(draft_tokens[i])
+        p_xi = float(target_probs[i, xi])
+        q_xi = float(draft_probs[i, xi])
+        # ratio = p/q clamped into [0, 1]. q_xi > 0 because the draft sampled
+        # xi from q_i; the guard is belt-and-braces for degenerate inputs.
+        accept_prob = 1.0 if q_xi <= 0.0 else min(1.0, p_xi / q_xi)
+        r = float(torch.rand((), generator=generator))
+        if r < accept_prob:
+            emitted.append(xi)
+            continue
+        # --- rejection at position i: resample from the residual ----------
+        # residual = max(0, p_i - q_i). This is the distribution that, mixed
+        # with the accept step, makes the marginal of the emitted token equal
+        # p_i exactly (Leviathan's correction term).
+        residual = torch.clamp(target_probs[i] - draft_probs[i], min=0.0)
+        total = float(residual.sum())
+        if total <= 0.0:
+            # p_i and q_i agree everywhere they overlap (no positive residual).
+            # Falling back to p_i is distribution-preserving and avoids a divide
+            # by zero. In practice this only happens with contrived inputs.
+            dist = target_probs[i]
+        else:
+            dist = residual / total
+        new_tok = int(torch.multinomial(dist, num_samples=1, generator=generator))
+        emitted.append(new_tok)
+        return emitted, i  # i drafts accepted, then one resampled token
+
+    # All K draft tokens accepted: emit the bonus from p_{K+1} (row K).
+    bonus = int(torch.multinomial(target_probs[k], num_samples=1, generator=generator))
+    emitted.append(bonus)
+    return emitted, k
+
+
+# ---------------------------------------------------------------------------
+# _autoregressive_draft -- shared K-step sampling loop for model-based drafts.
+# ---------------------------------------------------------------------------
+#
+# TinyDraftModel and SelfSpecDraftModel differ only in HOW they turn a context
+# into next-token logits (full small-model forward vs early-exit of the
+# target). Everything else -- the K-step loop, temperature, softmax, sampling,
+# and stacking the q_i rows -- is identical, so it lives here once.
+# ---------------------------------------------------------------------------
+
+
+@torch.no_grad()
+def _autoregressive_draft(
+    logits_fn,
+    input_ids: torch.Tensor,
+    k: int,
+    temperature: float,
+    generator: torch.Generator | None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample k tokens by repeatedly calling `logits_fn(context) -> (1, S, V)`.
+
+    Returns (token_ids (K,), draft_probs (K, V)). No KV cache: the context
+    grows by one token per step and is re-fed in full. That is O(k * S) work,
+    which is fine for tiny draft models and keeps this path cache-agnostic.
+    """
+    device = input_ids.device
+    context = input_ids
+    tokens: list[int] = []
+    prob_rows: list[torch.Tensor] = []
+    for _ in range(k):
+        logits = logits_fn(context)                 # (1, S, V)
+        last = logits[0, -1, :].to(torch.float32)   # (V,)
+        q = F.softmax(last / temperature, dim=-1)    # categorical for this slot
+        tok = int(torch.multinomial(q, num_samples=1, generator=generator))
+        tokens.append(tok)
+        prob_rows.append(q)
+        nxt = torch.tensor([[tok]], dtype=torch.long, device=device)
+        context = torch.cat([context, nxt], dim=1)
+    token_ids = torch.tensor(tokens, dtype=torch.long, device=device)
+    draft_probs = torch.stack(prob_rows, dim=0)      # (K, V)
+    return token_ids, draft_probs
+
+
+# ---------------------------------------------------------------------------
+# TinyDraftModel -- a smaller LlamaModel used as the draft.
+# ---------------------------------------------------------------------------
+
+
+class TinyDraftModel:
+    """Wrap a smaller LlamaModel as a DraftModel.
+
+    The "smaller" is the whole point: a 2-4 layer model proposes tokens far
+    cheaper than the full target, and the target verifies K of them in one
+    pass. This wrapper just adapts the model's forward to the propose()
+    contract (autoregressive sampling, returning the full q_i per token).
+    """
+
+    def __init__(self, model: "LlamaModel", temperature: float = 1.0) -> None:
+        self.model = model
+        self.temperature = temperature
+
+    @torch.no_grad()
+    def propose(
+        self, input_ids: torch.Tensor, k: int, kv_cache=None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # kv_cache is accepted for protocol symmetry but unused: the no-cache
+        # recompute keeps the draft self-contained (see SmallModelDraft in
+        # draft_model.py for the KV-cached variant).
+        return _autoregressive_draft(
+            lambda ctx: self.model(ctx), input_ids, k, self.temperature, _gen(self)
+        )
+
+
+# ---------------------------------------------------------------------------
+# SelfSpecDraftModel -- the v0.3 early-exit draft, exposed as a DraftModel.
+# ---------------------------------------------------------------------------
+
+
+class SelfSpecDraftModel:
+    """Adapt early-exit self-speculation to the DraftModel interface.
+
+    Reuses `early_exit_forward` (the same first-`n_layers`-blocks + final norm
+    + lm_head path the scheduler's greedy spec uses), but returns the softmax
+    distributions so the general acceptance-rejection sampler can drive it.
+    No new weights -- the draft IS the target, run shallow.
+    """
+
+    def __init__(self, model: "LlamaModel", n_layers: int = DEFAULT_N_DRAFT_LAYERS,
+                 temperature: float = 1.0) -> None:
+        self.model = model
+        self.n_layers = n_layers
+        self.temperature = temperature
+
+    @torch.no_grad()
+    def propose(
+        self, input_ids: torch.Tensor, k: int, kv_cache=None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # No-cache early exit: pass kv_cache=None so each block does a full
+        # (1, S) forward over the growing context (the layers handle None).
+        return _autoregressive_draft(
+            lambda ctx: early_exit_forward(self.model, ctx, None, n_layers=self.n_layers),
+            input_ids, k, self.temperature, _gen(self),
+        )
+
+
+# ---------------------------------------------------------------------------
+# FullModelTarget -- a LlamaModel as the verifying target.
+# ---------------------------------------------------------------------------
+
+
+class FullModelTarget:
+    """Wrap a LlamaModel as a TargetModel: one forward verifies the whole block."""
+
+    def __init__(self, model: "LlamaModel", temperature: float = 1.0) -> None:
+        self.model = model
+        self.temperature = temperature
+
+    @torch.no_grad()
+    def verify(
+        self, input_ids: torch.Tensor, draft_tokens: torch.Tensor, kv_cache=None
+    ) -> torch.Tensor:
+        device = input_ids.device
+        dt = draft_tokens.to(device).view(1, -1)
+        seq = torch.cat([input_ids, dt], dim=1)      # (1, S+K)
+        logits = self.model(seq)                     # (1, S+K, V), one pass
+        s = input_ids.shape[1]
+        k = dt.shape[1]
+        # Position s-1 (last context token) predicts slot 1; position s+k-1
+        # (last draft token) predicts the bonus slot K+1. The causal mask
+        # makes each of these depend only on the tokens up to and including it,
+        # so this matches the autoregressive draft positions exactly.
+        window = logits[0, s - 1 : s + k, :].to(torch.float32)   # (K+1, V)
+        return F.softmax(window / self.temperature, dim=-1)
+
+
+def _gen(obj) -> torch.Generator | None:
+    """Return a per-object torch.Generator if one was set, else None.
+
+    Draft wrappers don't take a generator directly (keeps their __init__ to the
+    spec); SpeculativeDecoder injects one by setting obj._generator so a seeded
+    decode is reproducible end-to-end. None falls back to the global RNG.
+    """
+    return getattr(obj, "_generator", None)
+
+
+# ---------------------------------------------------------------------------
+# SpeculativeDecoder -- orchestrates one draft -> verify -> accept round.
+# ---------------------------------------------------------------------------
+
+
+class SpeculativeDecoder:
+    """Drive draft/target speculative decoding and track the acceptance rate.
+
+    One `decode_step` = one speculative round: the draft proposes K tokens, the
+    target verifies them in a single forward, and `speculative_sample` accepts a
+    prefix (resampling the first rejection). Emits between 1 and K+1 tokens.
+    """
+
+    def __init__(self, draft_model, target_model, k: int = 4,
+                 generator: torch.Generator | None = None) -> None:
+        if k < 1:
+            raise ValueError(f"k must be >= 1, got {k}")
+        self.draft_model = draft_model
+        self.target_model = target_model
+        self.k = k
+        self.generator = generator
+        # Share the generator with the model wrappers so the WHOLE round
+        # (draft sampling + acceptance + resample) is reproducible from one
+        # seed. _gen() reads this attribute off each wrapper.
+        for m in (draft_model, target_model):
+            try:
+                m._generator = generator
+            except AttributeError:
+                pass  # Protocol objects we don't own; they'll use global RNG.
+
+        # Metrics. acceptance_rate is the LAST step's rate; the running totals
+        # feed mean_acceptance_rate across the whole generation.
+        self.acceptance_rate: float = 0.0
+        self.last_accepted: int = 0
+        self._total_accepted: int = 0
+        self._total_drafted: int = 0
+        self._steps: int = 0
+
+    @torch.no_grad()
+    def decode_step(self, input_ids: torch.Tensor, kv_cache=None) -> list[int]:
+        """One speculative round over context `input_ids` (1, S).
+
+        Returns the list of newly accepted/emitted token ids (length 1..K+1).
+        Updates `acceptance_rate` and the running mean.
+        """
+        draft_tokens, draft_probs = self.draft_model.propose(input_ids, self.k, kv_cache=kv_cache)
+        target_probs = self.target_model.verify(input_ids, draft_tokens, kv_cache=kv_cache)
+        emitted, n_accepted = speculative_sample(
+            draft_tokens, draft_probs, target_probs, generator=self.generator
+        )
+        self.last_accepted = n_accepted
+        self.acceptance_rate = n_accepted / self.k
+        self._total_accepted += n_accepted
+        self._total_drafted += self.k
+        self._steps += 1
+        return emitted
+
+    @property
+    def mean_acceptance_rate(self) -> float:
+        """Accepted draft tokens / total drafted, across all decode_steps."""
+        if self._total_drafted == 0:
+            return 0.0
+        return self._total_accepted / self._total_drafted

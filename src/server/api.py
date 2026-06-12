@@ -106,6 +106,11 @@ VISUALISER_PATH = Path(__file__).resolve().parent.parent / "visualiser" / "index
 _event_bus: EventBus | None = None
 _scheduler: ContinuousBatchScheduler | None = None
 _tokenizer: Any = None
+# The raw (un-LoRA-wrapped) LlamaModel, kept so the draft/target speculative
+# decoder can drive the model directly (it needs model.layers / model.embed for
+# the early-exit draft, which the LoRA wrapper does not expose). Set in
+# _init_engine; None until then.
+_base_model: Any = None
 # LoRA adapter registry, shared with the LoRALlamaModel the scheduler drives.
 # POST /adapters registers into this; GenerateRequest.adapter_id selects from it.
 _lora_manager: LoRAManager | None = None
@@ -198,6 +203,7 @@ def _pumper_loop() -> None:
 def _init_engine() -> None:
     """Load the model exactly once. Idempotent for tests + threads."""
     global _event_bus, _scheduler, _tokenizer, _pump_thread, _lora_manager, _lora_model
+    global _base_model
     if _scheduler is not None:
         return
 
@@ -208,6 +214,9 @@ def _init_engine() -> None:
     # available). The .eval() call is harmless after the move.
     model, _ = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
     model.eval()
+    # Keep the raw model for the speculative-decoding endpoint (it drives the
+    # model directly, bypassing the LoRA wrapper and the scheduler).
+    _base_model = model
 
     # Wrap the base model for multi-LoRA serving. With no adapter selected this
     # is numerically identical to the base model (LoRALinear's zero-overhead
@@ -272,6 +281,12 @@ class GenerateRequest(BaseModel):
     # Optional LoRA adapter to serve this request under. None == base model.
     # Must already be registered via POST /adapters.
     adapter_id: str | None = None
+    # Draft/target speculative decoding. 0 == disabled (the default; the
+    # request goes through the normal continuous-batch scheduler). When > 0,
+    # this request is served by a SpeculativeDecoder that drafts `speculative_k`
+    # tokens per round and verifies them against the full model. See
+    # _speculative_generate for the (buffered, demo) path and its caveats.
+    speculative_k: int = 0
 
 
 class AdapterRequest(BaseModel):
@@ -362,6 +377,58 @@ async def _stream_tokens_for_request(
 
 
 # ---------------------------------------------------------------------------
+# Draft/target speculative decoding (buffered demo path).
+# ---------------------------------------------------------------------------
+#
+# When a request sets speculative_k > 0 we serve it OUTSIDE the continuous-batch
+# scheduler, through a SpeculativeDecoder. The draft here is the target run
+# shallow (SelfSpecDraftModel) -- the only "smaller model" we have on hand
+# without a second checkpoint, so this demonstrates the exact acceptance-
+# rejection algorithm on real weights without shipping a distilled draft.
+#
+# Honest scope: this path is buffered (no token streaming), runs the no-KV-cache
+# verify forward (O(N^2) over the generation, fine for short demos), and does
+# not flow through the scheduler's metrics/event bus. It exists to make the
+# algorithm callable from the server; production batched spec-decode would wire
+# it into the scheduler's decode loop, which is a larger change.
+# ---------------------------------------------------------------------------
+
+
+def _speculative_generate(prompt: str, max_tokens: int, k: int) -> tuple[list[int], float]:
+    """Greedy-context speculative decode loop. Returns (token_ids, mean_accept)."""
+    assert _base_model is not None and _tokenizer is not None
+    from src.engine.spec_decode import (
+        FullModelTarget,
+        SelfSpecDraftModel,
+        SpeculativeDecoder,
+    )
+
+    device = _base_model.embed.weight.device
+    input_ids = _tokenizer(prompt, return_tensors="pt")["input_ids"].to(device)
+    eos = _tokenizer.eos_token_id
+
+    decoder = SpeculativeDecoder(
+        SelfSpecDraftModel(_base_model),
+        FullModelTarget(_base_model),
+        k=k,
+    )
+    ctx = input_ids
+    out: list[int] = []
+    while len(out) < max_tokens:
+        emitted = decoder.decode_step(ctx)
+        for tok in emitted:
+            out.append(tok)
+            ctx = torch.cat(
+                [ctx, torch.tensor([[tok]], dtype=torch.long, device=device)], dim=1
+            )
+            if len(out) >= max_tokens or (eos is not None and tok == eos):
+                break
+        if eos is not None and out and out[-1] == eos:
+            break
+    return out[:max_tokens], decoder.mean_acceptance_rate
+
+
+# ---------------------------------------------------------------------------
 # Adapter registration / validation.
 # ---------------------------------------------------------------------------
 
@@ -421,6 +488,21 @@ def create_app() -> FastAPI:
         assert _tokenizer is not None
 
         _validate_adapter(req.adapter_id)
+
+        # Draft/target speculative decoding bypasses the scheduler (buffered,
+        # single-request demo path). Run it off the event loop so the blocking
+        # forward passes don't stall other connections.
+        if req.speculative_k > 0:
+            tokens, _accept = await asyncio.to_thread(
+                _speculative_generate, req.prompt, req.max_tokens, req.speculative_k
+            )
+            text = _tokenizer.decode(tokens, skip_special_tokens=True)
+            return GenerateResponse(
+                request_id=str(uuid.uuid4()),
+                output_tokens=tokens,
+                output_text=text,
+            )
+
         request_id: str | None = None
         tokens: list[int] = []
         async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens, req.adapter_id):
