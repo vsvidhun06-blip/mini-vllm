@@ -174,6 +174,9 @@ class EvictingPagedKVCache(PagedRequestCache):
         eviction_observer: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(pool, request_id, num_layers)
+        # PagedRequestCache stores per-layer state but not the layer count;
+        # _evict_slots iterates over it, so keep our own copy.
+        self.num_layers = num_layers
         self.capacity_tokens = capacity_tokens
         self.recent_window = recent_window
         self.evict_threshold = evict_threshold

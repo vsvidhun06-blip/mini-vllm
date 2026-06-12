@@ -157,13 +157,17 @@ def test_scheduler_use_cuda_graphs_flag_is_safe_on_cpu():
         tie_word_embeddings=False,
     )
     model = LlamaModel(config).eval()
+    # ONE fixed prompt shared by both runs. Generating it inside run() would
+    # advance the RNG between the two calls, so run(True) and run(False) would
+    # see DIFFERENT prompts and their greedy outputs would legitimately differ --
+    # the assertion would fail for a reason unrelated to the cuda-graphs flag.
+    prompt = torch.randint(0, 256, (1, 6))
 
     def run(use_cuda_graphs):
         sched = ContinuousBatchScheduler(
             model, max_batch_size=2, num_blocks=64, use_cuda_graphs=use_cuda_graphs,
         )
-        prompt = torch.randint(0, 256, (1, 6))
-        sched.add_request("r", prompt, max_new_tokens=8, eos_token_id=None)
+        sched.add_request("r", prompt.clone(), max_new_tokens=8, eos_token_id=None)
         out = []
         while sched.has_work():
             for _rid, tok in sched.step():
