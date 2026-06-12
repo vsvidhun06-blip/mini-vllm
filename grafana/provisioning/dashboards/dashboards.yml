@@ -1,0 +1,16 @@
+# Pre-provisioned dashboard provider. Tells Grafana to load every dashboard JSON
+# under /var/lib/grafana/dashboards (mounted from ./grafana/dashboards) on
+# startup, so mini_vllm.json appears with no manual import.
+apiVersion: 1
+
+providers:
+  - name: mini-vllm
+    orgId: 1
+    folder: "mini-vLLM"
+    type: file
+    disableDeletion: false
+    editable: true
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

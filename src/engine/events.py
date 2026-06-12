@@ -265,6 +265,7 @@ def pool_state(
     used_blocks: int,
     total_blocks: int,
     cached_blocks: int = 0,
+    waiting: int = 0,
 ) -> Event:
     """Snapshot of the KV-cache pool, emitted once per scheduler step.
 
@@ -274,6 +275,11 @@ def pool_state(
     consumer wanting "uniquely owned" blocks computes
     used_blocks - cached_blocks. Defaults to 0 so pre-Day-13 callers
     and tests still construct valid events.
+
+    waiting is the number of requests queued for admission (not yet in
+    the active batch) at the moment of the snapshot -- the engine's
+    backlog. Added for the observability stack's queue_depth gauge;
+    defaults to 0 so older callers and hand-built events stay valid.
     """
     return Event(
         event_type="pool_state",
@@ -282,6 +288,7 @@ def pool_state(
             "used_blocks": used_blocks,
             "total_blocks": total_blocks,
             "cached_blocks": cached_blocks,
+            "waiting": waiting,
         },
     )
 

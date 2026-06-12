@@ -135,6 +135,35 @@ Open the URL, then send `POST /generate` requests (e.g. from DevTools)
 and watch the visualiser drive WAITING -> PREFILL -> DECODE -> DONE
 with the cache grid lighting up per request.
 
+## Observability (Prometheus + Grafana)
+
+The server exposes a Prometheus `/metrics` endpoint, and the repo ships a
+one-command monitoring stack with a **pre-provisioned datasource and
+dashboard** — bring it up and the dashboard is live, no manual import.
+
+```bash
+uvicorn src.server.api:app --port 8000                       # 1. engine on the host
+docker-compose -f docker-compose.observability.yml up        # 2. Prometheus + Grafana
+# Grafana:    http://localhost:3000   (anonymous viewer; admin/admin to edit)
+# Prometheus: http://localhost:9090
+```
+
+Prometheus scrapes `/metrics` every 5s (via `host.docker.internal`, mapped to
+the host gateway so it works on Docker Desktop and Linux). The Grafana dashboard
+(`grafana/dashboards/mini_vllm.json`) has seven panels:
+
+- **TTFT** P50/P95/P99 and **TPOT** P50/P95/P99 time series
+- **Queue depth** (waiting requests) over time
+- **Cache utilisation** gauge (% of KV blocks in use)
+- **Decode batch-size** histogram (heatmap over time)
+- **Requests/sec** throughput
+- **CUDA graph hit rate** (graph-replayed vs eager decode forwards)
+
+These are causally linked, not independent dials: cache utilisation and queue
+depth are the *causes*, TTFT is the *symptom*, and batch size + graph hit rate
+explain *why TPOT is what it is*. Full metric reference and the "what it means
+for inference quality" breakdown: [`docs/observability.md`](docs/observability.md).
+
 ## Repo structure
 
 ```

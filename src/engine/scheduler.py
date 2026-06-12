@@ -170,6 +170,7 @@ class ContinuousBatchScheduler:
         spec_decode_exit_layer: int = 8,
         spec_decode_observer: Callable[[int, int], None] | None = None,
         use_cuda_graphs: bool = True,
+        cuda_graph_observer: Callable[[bool], None] | None = None,
     ) -> None:
         """
         Args:
@@ -285,6 +286,11 @@ class ContinuousBatchScheduler:
         # behavioural change. See _decode_forward.
         self.use_cuda_graphs = use_cuda_graphs
         self._graph_runner = None  # type: ignore[assignment]
+        # Optional observability hook: called once per batched-decode forward
+        # with True if a captured CUDA graph was replayed, False if we fell back
+        # to eager. Stays None during ordinary use (no metrics dependency in the
+        # engine); the server wires metrics.observe_cuda_graph into it.
+        self._cuda_graph_observer = cuda_graph_observer
 
         # The KV pool. One big tensor shared across all requests. The pool
         # also gets the event_bus so block_allocated / block_freed fire
@@ -352,8 +358,12 @@ class ContinuousBatchScheduler:
             and self._graph_runner is not None
             and self._graph_runner.can_replay(len(caches), caches)
         ):
+            if self._cuda_graph_observer is not None:
+                self._cuda_graph_observer(True)   # graph hit
             # The graph runs under its own captured no_grad context.
             return self._graph_runner.replay(input_ids, caches)
+        if self._cuda_graph_observer is not None:
+            self._cuda_graph_observer(False)      # eager fallback
         with torch.no_grad():
             return self.model(input_ids, kv_cache=caches)
 
@@ -824,6 +834,7 @@ class ContinuousBatchScheduler:
             used_blocks=self.pool.num_blocks - free,
             total_blocks=self.pool.num_blocks,
             cached_blocks=self.pool.num_shared_blocks(),
+            waiting=len(self.waiting),
         ))
 
         return emitted

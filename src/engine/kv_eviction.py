@@ -60,7 +60,7 @@ m - n), so every surviving pair stays correct.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import torch
 
@@ -171,11 +171,17 @@ class EvictingPagedKVCache(PagedRequestCache):
         keep_budget: int | None = None,
         recent_window: int = 32,
         evict_threshold: float = 0.8,
+        eviction_observer: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(pool, request_id, num_layers)
         self.capacity_tokens = capacity_tokens
         self.recent_window = recent_window
         self.evict_threshold = evict_threshold
+        # Optional observability hook: called with the number of tokens dropped
+        # each time an eviction fires. Stays None in the engine/test path (no
+        # prometheus dependency here); the server/benchmark wires
+        # metrics.observe_eviction into it.
+        self.eviction_observer = eviction_observer
         # How many tokens to keep after an eviction. Default: half the budget,
         # but never below the recency window (otherwise recency is impossible).
         if keep_budget is None:
@@ -243,6 +249,8 @@ class EvictingPagedKVCache(PagedRequestCache):
         self._evict_slots(evict)
         self.num_evictions += 1
         self.evicted_tokens += len(evict)
+        if self.eviction_observer is not None:
+            self.eviction_observer(len(evict))
         return len(evict)
 
     def _evict_slots(self, evict: list[int]) -> None:
@@ -310,6 +318,7 @@ def make_evicting_cache(
     evict_threshold: float = 0.8,
     block_size: int = 16,
     request_id: str = "h2o",
+    eviction_observer: Callable[[int], None] | None = None,
 ) -> EvictingPagedKVCache:
     """Build an EvictingPagedKVCache backed by a fresh pool sized to
     `capacity_tokens` (NOT the full sequence length -- eviction is what lets a
@@ -350,6 +359,7 @@ def make_evicting_cache(
         keep_budget=keep_budget,
         recent_window=recent_window,
         evict_threshold=evict_threshold,
+        eviction_observer=eviction_observer,
     )
 
 

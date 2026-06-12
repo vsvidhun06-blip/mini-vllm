@@ -1,0 +1,60 @@
+# Observability stack for mini-vLLM: Prometheus (scrape) + Grafana (dashboard).
+#
+# This stack monitors the mini-vLLM server, which runs on the HOST (not in this
+# compose): `uvicorn src.server.api:app` listening on :8000. Prometheus reaches
+# the host's /metrics via `host.docker.internal`, mapped to the host gateway so
+# it works on Docker Desktop (Mac/Windows) and on Linux alike (host-gateway is
+# resolved by the extra_hosts entry below).
+#
+#   1. Start the engine on the host:   uvicorn src.server.api:app --port 8000
+#   2. Start this stack:               docker-compose -f docker-compose.observability.yml up
+#   3. Grafana:  http://localhost:3000   (anonymous viewer; admin/admin to edit)
+#      Prometheus: http://localhost:9090
+#
+# The Grafana datasource and the mini-vLLM dashboard are both pre-provisioned
+# (see grafana/provisioning/), so the dashboard is live on first load -- no
+# manual import, no clicking through setup.
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mini-vllm-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # Map host.docker.internal -> the host so Prometheus (in-container) can scrape
+    # the mini-vLLM server running on the host at :8000. host-gateway makes this
+    # portable across Docker Desktop and Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - obs
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mini-vllm-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Anonymous viewing so the dashboard is shareable without a login prompt;
+      # editing still requires the admin credentials above.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      # Datasource + dashboard provider definitions (read on startup).
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # The dashboard JSON the provider loads from.
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - obs
+
+networks:
+  obs:
+    driver: bridge

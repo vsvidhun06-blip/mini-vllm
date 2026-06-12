@@ -239,6 +239,7 @@ def _init_engine() -> None:
         enable_spec_decode=False,
         spec_decode_k=4,
         spec_decode_observer=metrics.observe_spec_decode_round,
+        cuda_graph_observer=metrics.observe_cuda_graph,
     )
 
     # Single pumper thread for the lifetime of the process. Daemon so it

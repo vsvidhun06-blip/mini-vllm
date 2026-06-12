@@ -136,6 +136,82 @@ SPEC_DECODE_ACCEPTANCE_RATE = Histogram(
 )
 
 
+# ---------------------------------------------------------------------------
+# Observability-stack instruments (Grafana dashboard + Prometheus scrape).
+# ---------------------------------------------------------------------------
+#
+# These carry an explicit `mini_vllm_` prefix so they namespace cleanly
+# alongside any other exporter on the same Prometheus, and so the Grafana
+# dashboard queries are unambiguous. (The older series above predate the
+# convention and stay unprefixed to avoid breaking existing scrapers/tests.)
+# ---------------------------------------------------------------------------
+
+# Backlog: requests queued for admission but not yet in the active batch.
+# Driven off the per-step pool_state event's `waiting` count. A persistently
+# high queue depth means the engine is saturated -- offered load exceeds the
+# batch/pool capacity, and TTFT will climb because requests wait to be admitted.
+QUEUE_DEPTH = Gauge(
+    "mini_vllm_queue_depth",
+    "Requests waiting for admission (not yet in the active batch).",
+)
+
+# KV-cache occupancy as a percentage of the block pool. The single most
+# important saturation signal for a paged-attention engine: as this approaches
+# 100% the scheduler can no longer admit new requests (queue depth rises) and
+# may have to preempt. Driven off pool_state ((used+cached)/total * 100).
+CACHE_UTILISATION = Gauge(
+    "mini_vllm_cache_utilisation",
+    "Percentage of KV-cache blocks in use (0-100).",
+)
+
+# Decode batch size per step. Throughput on a memory-bandwidth-bound decode is
+# roughly proportional to how many requests share each forward, so this is the
+# batching-efficiency signal. Buckets cover 1..64 concurrent decoders.
+BATCH_SIZE = Histogram(
+    "mini_vllm_batch_size",
+    "Number of requests in each batched decode step.",
+    buckets=[1, 2, 4, 8, 16, 32, 64],
+)
+
+# Cumulative KV evictions (H2O long-context feature, Phase 2). Stays 0 unless an
+# EvictingPagedKVCache is in use; when it moves, the engine is trading old
+# context for budget to serve a sequence longer than the cache.
+EVICTIONS_TOTAL = Counter(
+    "mini_vllm_evictions",
+    "Total H2O KV-cache evictions (tokens dropped to stay within budget).",
+)
+
+# CUDA-graph decode acceleration (Phase 1). Labelled hit/miss: `hit` = a
+# captured graph was replayed (one launch), `miss` = eager fallback. The ratio
+# hit/(hit+miss) is the graph hit rate the dashboard charts -- on CPU or before
+# any capture it is all misses, which is the honest eager-path picture.
+CUDA_GRAPH_HITS_TOTAL = Counter(
+    "mini_vllm_cuda_graph_hits",
+    "Batched-decode forwards served by a CUDA graph vs eager, by outcome.",
+    ["outcome"],  # hit | miss
+)
+for _outcome in ("hit", "miss"):
+    CUDA_GRAPH_HITS_TOTAL.labels(outcome=_outcome)
+
+
+def observe_eviction(num_tokens: int = 1) -> None:
+    """Record an H2O eviction dropping `num_tokens` tokens.
+
+    Wired into EvictingPagedKVCache via its `eviction_observer` hook so the
+    engine itself stays free of any prometheus dependency.
+    """
+    if num_tokens > 0:
+        EVICTIONS_TOTAL.inc(num_tokens)
+
+
+def observe_cuda_graph(hit: bool) -> None:
+    """Record one batched-decode forward as a graph hit or an eager miss.
+
+    Wired into ContinuousBatchScheduler via its `cuda_graph_observer` hook.
+    """
+    CUDA_GRAPH_HITS_TOTAL.labels(outcome="hit" if hit else "miss").inc()
+
+
 def observe_spec_decode_round(accepted: int, k: int) -> None:
     """Record one spec-decode round's acceptance ratio.
 
@@ -219,7 +295,11 @@ class MetricsCollector:
             # step. Each gets its own TPOT sample against its own
             # previous-token time -- requests share scheduler steps but
             # keep independent token timelines.
-            for row in p.get("batch", []):
+            batch = p.get("batch", [])
+            # Batching efficiency: how many requests shared this forward.
+            if batch:
+                BATCH_SIZE.observe(len(batch))
+            for row in batch:
                 rid = row["request_id"]
                 prev = self._last_token_time.get(rid)
                 if prev is not None:
@@ -241,11 +321,15 @@ class MetricsCollector:
             free = p["free_blocks"]
             used_total = p["used_blocks"]
             cached = p.get("cached_blocks", 0)
+            total = p.get("total_blocks", 0)
             POOL_BLOCKS_FREE.set(free)
             POOL_BLOCKS_CACHED.set(cached)
             # used_blocks in the event is "everything not free"; the
             # uniquely-owned count is that minus the shared ones.
             POOL_BLOCKS_USED.set(used_total - cached)
+            # Observability-stack gauges: backlog and cache pressure.
+            QUEUE_DEPTH.set(p.get("waiting", 0))
+            CACHE_UTILISATION.set(100.0 * used_total / total if total else 0.0)
 
 
 # Module-level singleton. api.py and the test fixture both subscribe
