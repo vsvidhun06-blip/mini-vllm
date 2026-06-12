@@ -72,6 +72,8 @@ from pydantic import BaseModel
 
 from src.engine.device import DEVICE
 from src.engine.events import Event, EventBus
+from src.engine.lora import LoRAManager
+from src.engine.lora_model import LoRALlamaModel, random_adapter_weights
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf
 from src.engine.scheduler import ContinuousBatchScheduler
 from src.server import metrics
@@ -104,6 +106,10 @@ VISUALISER_PATH = Path(__file__).resolve().parent.parent / "visualiser" / "index
 _event_bus: EventBus | None = None
 _scheduler: ContinuousBatchScheduler | None = None
 _tokenizer: Any = None
+# LoRA adapter registry, shared with the LoRALlamaModel the scheduler drives.
+# POST /adapters registers into this; GenerateRequest.adapter_id selects from it.
+_lora_manager: LoRAManager | None = None
+_lora_model: LoRALlamaModel | None = None
 _sched_lock = threading.Lock()
 _token_streams: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = {}
 _streams_lock = threading.Lock()
@@ -191,7 +197,7 @@ def _pumper_loop() -> None:
 
 def _init_engine() -> None:
     """Load the model exactly once. Idempotent for tests + threads."""
-    global _event_bus, _scheduler, _tokenizer, _pump_thread
+    global _event_bus, _scheduler, _tokenizer, _pump_thread, _lora_manager, _lora_model
     if _scheduler is not None:
         return
 
@@ -202,6 +208,13 @@ def _init_engine() -> None:
     # available). The .eval() call is harmless after the move.
     model, _ = load_tinyllama_from_hf(MODEL_NAME, dtype=torch.float32)
     model.eval()
+
+    # Wrap the base model for multi-LoRA serving. With no adapter selected this
+    # is numerically identical to the base model (LoRALinear's zero-overhead
+    # path), so wrapping costs nothing until a request names an adapter_id.
+    _lora_manager = LoRAManager(max_adapters=8)
+    _lora_model = LoRALlamaModel(model, _lora_manager)
+    model = _lora_model
 
     _event_bus = EventBus()
     _event_bus.subscribe(_on_bus_event)
@@ -256,6 +269,30 @@ def _init_engine() -> None:
 class GenerateRequest(BaseModel):
     prompt: str
     max_tokens: int = 20
+    # Optional LoRA adapter to serve this request under. None == base model.
+    # Must already be registered via POST /adapters.
+    adapter_id: str | None = None
+
+
+class AdapterRequest(BaseModel):
+    """Register a LoRA adapter for serving.
+
+    For this educational server the weights are synthesised (random, seeded by
+    `seed`) at the model's projection dims -- enough to demonstrate hot-swap and
+    per-request routing without shipping a multi-MB PEFT checkpoint over HTTP. A
+    production endpoint would instead stream/point at real adapter weights.
+    """
+    adapter_id: str
+    rank: int = 16
+    alpha: float = 32.0
+    seed: int = 0
+
+
+class AdapterResponse(BaseModel):
+    adapter_id: str
+    rank: int
+    alpha: float
+    resident_adapters: list[str]
 
 
 class GenerateResponse(BaseModel):
@@ -281,7 +318,9 @@ class GenerateResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _stream_tokens_for_request(prompt: str, max_tokens: int) -> AsyncIterator[dict]:
+async def _stream_tokens_for_request(
+    prompt: str, max_tokens: int, adapter_id: str | None = None
+) -> AsyncIterator[dict]:
     """Submit one prompt; yield per-token events until done."""
     assert _scheduler is not None and _tokenizer is not None
     request_id = str(uuid.uuid4())
@@ -306,6 +345,7 @@ async def _stream_tokens_for_request(prompt: str, max_tokens: int) -> AsyncItera
                 max_new_tokens=max_tokens,
                 eos_token_id=_tokenizer.eos_token_id,
                 prompt_text=prompt,
+                adapter_id=adapter_id,
             )
         _pump_wakeup.set()
 
@@ -322,6 +362,38 @@ async def _stream_tokens_for_request(prompt: str, max_tokens: int) -> AsyncItera
 
 
 # ---------------------------------------------------------------------------
+# Adapter registration / validation.
+# ---------------------------------------------------------------------------
+
+
+def _validate_adapter(adapter_id: str | None) -> None:
+    """Raise 404 if a request names an adapter that isn't registered."""
+    if adapter_id is None:
+        return
+    if _lora_manager is None or adapter_id not in _lora_manager:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=404,
+            detail=f"adapter {adapter_id!r} not registered; POST it to /adapters first",
+        )
+
+
+def _register_adapter(req: "AdapterRequest") -> AdapterResponse:
+    """Synthesise + register a LoRA adapter sized to the model's projections."""
+    _init_engine()
+    assert _lora_manager is not None and _lora_model is not None
+    weights = random_adapter_weights(_lora_model, rank=req.rank, seed=req.seed)
+    _lora_manager.load_adapter(req.adapter_id, req.rank, req.alpha, weights)
+    return AdapterResponse(
+        adapter_id=req.adapter_id,
+        rank=req.rank,
+        alpha=req.alpha,
+        resident_adapters=_lora_manager.adapter_ids(),
+    )
+
+
+# ---------------------------------------------------------------------------
 # App factory.
 # ---------------------------------------------------------------------------
 
@@ -333,6 +405,11 @@ def create_app() -> FastAPI:
     def _startup() -> None:
         _init_engine()
 
+    # -- POST /adapters (register a LoRA adapter) --------------------------
+    @app.post("/adapters", response_model=AdapterResponse)
+    def register_adapter(req: AdapterRequest) -> AdapterResponse:
+        return _register_adapter(req)
+
     # -- POST /generate (buffered) ----------------------------------------
     #
     # Async now. Internally consumes the same per-token stream that
@@ -343,9 +420,10 @@ def create_app() -> FastAPI:
         _init_engine()
         assert _tokenizer is not None
 
+        _validate_adapter(req.adapter_id)
         request_id: str | None = None
         tokens: list[int] = []
-        async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens):
+        async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens, req.adapter_id):
             if request_id is None and "request_id" in ev:
                 request_id = ev["request_id"]
             if "token_id" in ev:
@@ -371,8 +449,10 @@ def create_app() -> FastAPI:
     async def generate_stream(req: GenerateRequest) -> StreamingResponse:
         _init_engine()
 
+        _validate_adapter(req.adapter_id)
+
         async def sse() -> AsyncIterator[str]:
-            async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens):
+            async for ev in _stream_tokens_for_request(req.prompt, req.max_tokens, req.adapter_id):
                 yield f"data: {json.dumps(ev)}\n\n"
 
         return StreamingResponse(sse(), media_type="text/event-stream")

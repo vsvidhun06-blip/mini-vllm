@@ -91,6 +91,11 @@ class Request:
     # happened before we got here. None when the caller didn't supply it.
     prompt_text: str | None = None
 
+    # Optional LoRA adapter to serve this request under. None == base model.
+    # Routed to the model right before each forward when the model supports
+    # adapter switching (LoRALlamaModel); ignored by a plain LlamaModel.
+    adapter_id: str | None = None
+
     status: RequestStatus = RequestStatus.WAITING
     generated_token_ids: list[int] = field(default_factory=list)
     cache: PagedRequestCache | None = None      # allocated at admission
@@ -338,6 +343,19 @@ class ContinuousBatchScheduler:
         except Exception:
             return ""
 
+    def _route_adapters(self, reqs: list) -> None:
+        """Set per-row LoRA adapters for the upcoming forward, in `reqs` order.
+
+        No-op unless the model exposes `set_batch_adapters` (i.e. it is a
+        LoRALlamaModel). The list aligns 1:1 with the batch rows the caller is
+        about to feed the model, so row i is served under reqs[i].adapter_id
+        (None == base). A plain LlamaModel has no such method, so this is a
+        guarded no-op and the non-LoRA path is completely unchanged.
+        """
+        route = getattr(self.model, "set_batch_adapters", None)
+        if route is not None:
+            route([r.adapter_id for r in reqs])
+
     def _decode_forward(
         self,
         input_ids: torch.Tensor,
@@ -376,6 +394,7 @@ class ContinuousBatchScheduler:
         max_new_tokens: int,
         eos_token_id: int | None = None,
         prompt_text: str | None = None,
+        adapter_id: str | None = None,
     ) -> None:
         """Enqueue a new request. Admission happens at the next step() if
         BOTH the batch has room AND the pool has enough free blocks for
@@ -383,6 +402,10 @@ class ContinuousBatchScheduler:
 
         prompt_text is optional and only used by the request_admitted
         event payload for visualiser display.
+
+        adapter_id optionally selects a LoRA adapter to serve this request
+        under; it is routed to the model per forward when the model is a
+        LoRALlamaModel, and ignored otherwise.
         """
         if prompt_ids.dim() != 2 or prompt_ids.shape[0] != 1:
             raise ValueError(
@@ -398,6 +421,7 @@ class ContinuousBatchScheduler:
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
             prompt_text=prompt_text,
+            adapter_id=adapter_id,
         ))
 
     def has_work(self) -> bool:
@@ -654,6 +678,8 @@ class ContinuousBatchScheduler:
             # pos_offset>0) handles it. Intermediate chunks' logits are
             # discarded; only the final chunk's last position yields a token.
             forward_input = r.prompt_ids[:, start:start + chunk_tokens]
+            # Route this single request's adapter (batch row 0) before prefill.
+            self._route_adapters([r])
             with torch.no_grad():
                 logits = self.model(forward_input, kv_cache=r.cache)  # (1, chunk, V)
 
@@ -771,6 +797,10 @@ class ContinuousBatchScheduler:
                     device=self.device,
                 )
                 caches = [r.cache for r in decode_reqs]
+                # Mixed-adapter batching: route each row to its request's adapter
+                # (in decode_reqs order, matching input_ids/caches) before the
+                # batched forward. No-op on a plain LlamaModel.
+                self._route_adapters(decode_reqs)
                 logits = self._decode_forward(input_ids, caches)  # (B, 1, V)
 
                 # Collect the per-row results first so we can emit ONE
