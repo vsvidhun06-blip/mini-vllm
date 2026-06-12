@@ -36,6 +36,34 @@ scheduler must queue some requests until earlier ones free theirs.
 Total wall time goes up but correctness is preserved
 (`test_paged_scheduler_with_tight_blocks_still_parity`).
 
+## vs production vLLM
+
+mini-vLLM is **not** trying to beat [vLLM](https://github.com/vllm-project/vllm) —
+it's trying to make every idea inside vLLM visible and verifiable. So I built an
+honest head-to-head against it on identical TinyLlama workloads:
+[`scripts/benchmark_vs_vllm.py`](scripts/benchmark_vs_vllm.py).
+
+The result is the expected one for a hand-written teaching engine vs a production
+system: **mini-vLLM is roughly an order of magnitude slower on per-token latency
+(TPOT), and the throughput gap widens as batch size grows.** That's not a
+disappointment — it's the receipt. Each slowdown maps to one named production
+technique that v1 of mini-vLLM intentionally omits for clarity:
+
+- **TPOT** — vLLM replays a captured **CUDA graph** (one launch); mini-vLLM does
+  eager PyTorch dispatch (hundreds of kernel launches) per step.
+- **Throughput at batch=8** — vLLM's **C++ scheduler** + paged-attention CUDA
+  kernels keep the GPU saturated; our Python `step()` loop pays host overhead
+  that grows with batch size.
+- **TTFT** — vLLM's **async engine** overlaps tokenisation/scheduling; mini-vLLM
+  admits synchronously on one thread.
+- **fp32-for-parity tax** — mini-vLLM runs fp32 for exact HF parity (`atol=1e-4`)
+  while vLLM runs fp16, ~2x the bandwidth on a bandwidth-bound decode.
+
+Full methodology, the component-by-component breakdown, and a
+"What I learned from the gap" analysis are in
+[`docs/vllm_comparison.md`](docs/vllm_comparison.md). The benchmark degrades
+gracefully (mini-vLLM-only output) on machines where vLLM can't be installed.
+
 ## Architecture
 
 ```
