@@ -269,6 +269,81 @@
           "legendFormat": "hit rate"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Bottleneck Over Time",
+      "type": "state-timeline",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Which scheduler phase dominates each step, from the StepProfiler's rolling window. The active phase reads 1; watching the lanes light up shows the bottleneck shifting (e.g. prefill -> decode under load) — the signal the auto-tuner acts on.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 80, "lineWidth": 0 },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "idle", "color": "transparent", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "active", "color": "orange", "index": 1 } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "rowHeight": 0.9,
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "mini_vllm_bottleneck_type",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Bottleneck Distribution",
+      "type": "piechart",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Share of the selected time range each phase spent as the bottleneck (avg_over_time of the active gauge). A balanced engine spreads the slices; one dominant slice is where tuning effort pays off.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "hideFrom": { "tooltip": false, "viz": false, "legend": false } },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "table", "placement": "right", "values": ["percent"] },
+        "tooltip": { "mode": "single", "sort": "desc" },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "avg_over_time(mini_vllm_bottleneck_type[$__range])",
+          "legendFormat": "{{type}}",
+          "instant": true
+        }
+      ]
     }
   ]
 }
