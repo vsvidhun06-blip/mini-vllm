@@ -326,6 +326,11 @@ class ContinuousBatchScheduler:
         # Monotonic step counter. Exposed via the decode_step event so the
         # visualiser can align decode bursts to a timeline.
         self._step_idx: int = 0
+        # Optional StepProfiler. When attached, step() marks the prefill /
+        # decode / kv_alloc / overhead phase boundaries so the auto-tuner can
+        # see where time goes. None (the default) makes every _prof_* call a
+        # no-op, so existing tests run byte-identically.
+        self.profiler = None
 
     # ---- Helpers (event emission lives here so the core loop stays clean) ----
 
@@ -333,6 +338,20 @@ class ContinuousBatchScheduler:
         """Fire an event if a bus is attached; otherwise no-op."""
         if self.event_bus is not None:
             self.event_bus.emit(event)
+
+    # ---- profiler marks (no-ops unless a StepProfiler is attached) -------
+
+    def _prof_begin(self) -> None:
+        if self.profiler is not None:
+            self.profiler.begin_step()
+
+    def _prof_lap(self, label: str) -> None:
+        if self.profiler is not None:
+            self.profiler.lap(label)
+
+    def _prof_end(self) -> None:
+        if self.profiler is not None:
+            self.profiler.end_step()
 
     def _decode_token_str(self, token_id: int) -> str:
         """Resolve a token id to display text. Empty string if no decoder."""
@@ -529,6 +548,7 @@ class ContinuousBatchScheduler:
         """
         emitted: list[tuple[str, int]] = []
         self._step_idx += 1
+        self._prof_begin()
 
         # --- 1. Admission --------------------------------------------------
         # Promote requests one at a time, checking BOTH constraints:
@@ -612,6 +632,8 @@ class ContinuousBatchScheduler:
                 cached_blocks=cached_blocks,
                 total_prefill_blocks=prefill_blocks,
             ))
+
+        self._prof_lap("kv_alloc")  # admission/block-allocation = the memory phase
 
         # --- 2. Chunked prefill --------------------------------------------
         # vLLM-v2 / SGLang scheduling: decode requests get latency priority,
@@ -720,6 +742,8 @@ class ContinuousBatchScheduler:
             ))
             r.status = RequestStatus.DONE if r.is_finished() else RequestStatus.DECODE
 
+        self._prof_lap("prefill")
+
         # --- 3. Decode -----------------------------------------------------
         # Two code paths share this slot:
         #   * Vanilla batched decode: one forward over the whole decode
@@ -827,6 +851,8 @@ class ContinuousBatchScheduler:
                     batch=batch_for_event,
                 ))
 
+        self._prof_lap("decode")
+
         # --- 4. Eviction --------------------------------------------------
         # Done requests release their blocks to the pool. This is what lets
         # waiting requests get admitted on a future step.
@@ -867,4 +893,7 @@ class ContinuousBatchScheduler:
             waiting=len(self.waiting),
         ))
 
+        # Eviction + pool-state emission counts as overhead (the trailing
+        # interval before end_step closes the step).
+        self._prof_end()
         return emitted

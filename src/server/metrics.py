@@ -226,6 +226,29 @@ DEADLINE_MISS_MS = Histogram(
 )
 
 
+# Continuous profiling: which phase is currently the engine's bottleneck. A
+# label gauge -- the active phase reads 1, the others 0 -- so a Grafana pie can
+# render the bottleneck distribution and a state-timeline shows shifts over time.
+BOTTLENECK_TYPE = Gauge(
+    "mini_vllm_bottleneck_type",
+    "Current dominant scheduler bottleneck (1 for the active phase, else 0).",
+    ["type"],  # prefill | decode | memory | overhead
+)
+_BOTTLENECK_TYPES = ("prefill", "decode", "memory", "overhead")
+for _bt in _BOTTLENECK_TYPES:
+    BOTTLENECK_TYPE.labels(type=_bt).set(0)
+
+
+def set_bottleneck(bottleneck: str | None) -> None:
+    """Set the active-bottleneck gauge (1 for `bottleneck`, 0 for the rest).
+
+    Driven from the engine pump loop off StepProfiler.bottleneck(). None (no
+    steps profiled yet) clears every series to 0.
+    """
+    for t in _BOTTLENECK_TYPES:
+        BOTTLENECK_TYPE.labels(type=t).set(1.0 if t == bottleneck else 0.0)
+
+
 def observe_deadline_miss(missed_by_ms: float) -> None:
     """Record one TTFT deadline miss (count + how late it was).
 

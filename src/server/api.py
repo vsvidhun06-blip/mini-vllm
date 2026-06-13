@@ -81,6 +81,8 @@ from src.engine.sla_scheduler import (
     parse_priority,
     sla_scheduler_enabled,
 )
+from src.engine.auto_tuner import AutoTuner
+from src.engine.profiler import StepProfiler
 from src.server import metrics
 
 # The visualiser is a single static HTML file. FileResponse re-reads on
@@ -120,6 +122,12 @@ _base_model: Any = None
 # POST /adapters registers into this; GenerateRequest.adapter_id selects from it.
 _lora_manager: LoRAManager | None = None
 _lora_model: LoRALlamaModel | None = None
+# Continuous profiling + auto-tuning. The profiler is attached to the scheduler
+# (it marks each step's phase boundaries); the tuner reads its rolling bottleneck
+# and nudges live scheduler params. Both are inspectable via /profiler and
+# /tuning-log. None until _init_engine runs.
+_profiler: Any = None
+_auto_tuner: Any = None
 _sched_lock = threading.Lock()
 _token_streams: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = {}
 _streams_lock = threading.Lock()
@@ -213,13 +221,21 @@ def _pumper_loop() -> None:
                 # leaving them in the scheduler's `finished` list would
                 # grow unbounded.
                 _scheduler.get_finished()
+                # Continuous profiling + auto-tuning: let the tuner read the
+                # rolling bottleneck and adjust live params (it only acts on its
+                # own interval), and publish the bottleneck gauge for Grafana.
+                # Both run under _sched_lock so param mutation is race-free.
+                if _auto_tuner is not None:
+                    _auto_tuner.observe(_scheduler)
+                if _profiler is not None:
+                    metrics.set_bottleneck(_profiler.bottleneck())
             time.sleep(0)
 
 
 def _init_engine() -> None:
     """Load the model exactly once. Idempotent for tests + threads."""
     global _event_bus, _scheduler, _tokenizer, _pump_thread, _lora_manager, _lora_model
-    global _base_model
+    global _base_model, _profiler, _auto_tuner
     if _scheduler is not None:
         return
 
@@ -289,6 +305,14 @@ def _init_engine() -> None:
         )
     else:
         _scheduler = ContinuousBatchScheduler(model, **sched_kwargs)
+
+    # Continuous profiling + auto-tuning. The profiler marks each step's phase
+    # boundaries (wall-clock by default -- a CUDAEventProfiler clock would sync
+    # every step, which is too costly for the live serving loop). The tuner
+    # reads its rolling bottleneck on its own interval and nudges live params.
+    _profiler = StepProfiler(window=100)
+    _scheduler.profiler = _profiler
+    _auto_tuner = AutoTuner(_profiler)
 
     # Single pumper thread for the lifetime of the process. Daemon so it
     # doesn't block interpreter shutdown if the user Ctrl-Cs uvicorn.
@@ -628,6 +652,32 @@ def create_app() -> FastAPI:
     def get_metrics() -> Response:
         _init_engine()
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    # -- GET /profiler -----------------------------------------------------
+    #
+    # Current bottleneck + rolling per-phase stats from the StepProfiler. The
+    # auto-tuner consumes the same data; this endpoint exposes it for dashboards
+    # and ad-hoc inspection.
+    @app.get("/profiler")
+    def get_profiler() -> dict:
+        _init_engine()
+        if _profiler is None:
+            return {"n_steps": 0, "bottleneck": None}
+        return _profiler.to_dict()
+
+    # -- GET /tuning-log ---------------------------------------------------
+    #
+    # The AutoTuner's history: every parameter change it has made, with the
+    # step, the bottleneck that triggered it, and the old/new values.
+    @app.get("/tuning-log")
+    def get_tuning_log() -> dict:
+        _init_engine()
+        if _auto_tuner is None:
+            return {"tuning_log": []}
+        return {
+            "tuning_log": _auto_tuner.log_as_dicts(),
+            "current_bottleneck": _profiler.bottleneck() if _profiler else None,
+        }
 
     # -- GET / -------------------------------------------------------------
     @app.get("/")
