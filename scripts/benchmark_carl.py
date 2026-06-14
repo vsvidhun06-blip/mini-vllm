@@ -709,8 +709,22 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=500, help="LMSYS prompts for scenario 4")
     parser.add_argument("--thompson", action="store_true",
                         help="include the Thompson-Sampling CARL ablation")
+    parser.add_argument("--live", action="store_true",
+                        help="run the REAL TinyLlama inference harness (src/carl/live.py) "
+                             "instead of the simulation: serves 3 scenarios through the "
+                             "engine, CARL adaptive vs a fixed baseline. Needs torch + the "
+                             "model cache; --limit sets the per-scenario request count "
+                             "(capped at 50 for Colab).")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+
+    # --live takes a completely different path: real model execution, not the
+    # analytical simulation below. We import it lazily so the default simulation
+    # run stays torch-free (importable on a box without torch / a GPU).
+    if args.live:
+        from src.carl.live import main_live
+        main_live(args)
+        return
 
     print("NOTE: this is a CONTROL-LOOP SIMULATION (see module docstring). It drives")
     print("the real CARL controller/bandits over an analytical serving cost model;")
