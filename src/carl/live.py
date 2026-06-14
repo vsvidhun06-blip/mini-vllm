@@ -330,7 +330,11 @@ def run_live(n_requests: int = 50, seed: int = 0) -> dict:
     # GPU run that later errors or is killed (e.g. OOM) would surface NOTHING --
     # the buffered stdout dies with the process. Flushing makes progress visible
     # as it happens, so the cell can never appear to "fail silently".
-    print(f"Device: {DEVICE} | dtype: {dtype}", flush=True)
+    # NB: no '|' in this line. The notebook's to_md_table() (cell 5) scans every
+    # stdout line containing a pipe and treats the FIRST one as the table header;
+    # a "Device: ... | dtype: ..." line would hijack that and render the real
+    # 7-column metrics table as a broken 2-column one in docs/benchmarks.md.
+    print(f"Device: {DEVICE}, dtype: {dtype}", flush=True)
     if DEVICE.type != "cuda":
         print("WARNING: no CUDA device -- running on CPU. Numbers are for a smoke "
               "test only; run on a Colab GPU for representative results.\n", flush=True)
