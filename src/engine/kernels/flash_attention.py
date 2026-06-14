@@ -196,20 +196,22 @@ def flash_attention_kernel(
                 mask=(offs_m[:, None] < S_q) & (offs_n[None, :] < S_k),
                 other=0.0,
             )
-            # s is fp32 (tl.dot accumulator); cast the bias up so the add stays
-            # fp32 even when the mask tensor is fp16. No-op in fp32 mode.
-            s = s + bias.to(tl.float32)
+            # The wrapper casts every input (incl. this additive mask) up to
+            # fp32 before launch, so bias is already fp32 and the add keeps the
+            # scores fp32 -- no operand-dtype mixing.
+            s = s + bias
 
         # --- online softmax update ---
         m_new = tl.maximum(m_i, tl.max(s, axis=1))      # new running max
         p = tl.exp(s - m_new[:, None])                  # this block's weights
         alpha = tl.exp(m_i - m_new)                     # correction for the past
         l_i = l_i * alpha + tl.sum(p, axis=1)
-        # tl.dot requires both operands to share a dtype. In fp16 mode v is
-        # loaded as fp16 while p is fp32 (tl.dot above accumulates in fp32, and
-        # the online-softmax exp keeps it fp32), so cast v up to fp32 here. In
-        # fp32 mode this is a no-op, so parity is unaffected.
-        acc = acc * alpha[:, None] + tl.dot(p, v.to(tl.float32), allow_tf32=False)
+        # Both operands are fp32: the wrapper forces q/k/v to fp32, so the
+        # scores dot above returns fp32 -> p is fp32, and v was loaded fp32.
+        # That alignment is the whole point of the fp32-everywhere policy --
+        # tl.dot rejects mixed-dtype operands ("Both operands must be same
+        # dtype"), which is exactly what bit us when v was loaded fp16.
+        acc = acc * alpha[:, None] + tl.dot(p, v, allow_tf32=False)
         m_i = m_new
 
     # Normalize. No real query row is ever fully masked (every row attends to
@@ -254,7 +256,25 @@ def flash_attention_forward(
         "pass either causal=True or an explicit attn_mask, not both"
     )
 
-    out = torch.empty_like(q)
+    # --- fp32 everywhere ----------------------------------------------------
+    # The model runs fp16 on GPU, so q/k/v arrive fp16. Triton's tl.dot returns
+    # its result in the INPUT operands' dtype: with fp16 q/k the scores dot comes
+    # back fp16, so the softmax weights p are fp16 -- but the value matmul mixes
+    # that fp16 p with v, and any cast on one side (the old v.to(fp32)) leaves the
+    # operands mismatched, which is exactly the "Both operands must be same dtype.
+    # Got fp32 and fp16" crash. Rather than thread casts through every op, run the
+    # WHOLE kernel in fp32: cast q/k/v (and the additive mask) up here, compute,
+    # then cast the output back to the caller's dtype below. This also matches the
+    # engine's true-fp32 parity contract (the kernel already disables TF32), so
+    # the numerics are unchanged from the fp32 path.
+    orig_dtype = q.dtype
+    q = q.float()
+    k = k.float()
+    v = v.float()
+    if attn_mask is not None:
+        attn_mask = attn_mask.float()
+
+    out = torch.empty_like(q)          # fp32 (q is now fp32)
     scale = 1.0 / (D ** 0.5)
 
     use_mask = attn_mask is not None
@@ -287,4 +307,6 @@ def flash_attention_forward(
         CAUSAL=causal,
         USE_MASK=use_mask,
     )
-    return out
+    # Hand back the caller's original dtype (e.g. fp16) so this stays a drop-in
+    # for SDPA; the fp32 promotion above is an internal compute detail.
+    return out.to(orig_dtype)

@@ -94,6 +94,34 @@ def test_sliced_prefill_explicit_mask():
 
 
 @cuda_only
+@pytest.mark.parametrize("causal", [False, True])
+def test_fp16_inputs_run_and_preserve_dtype(causal):
+    """fp16 q/k/v must (a) not crash and (b) come back fp16, close to fp32.
+
+    This is the regression guard for the "Both operands must be same dtype. Got
+    fp32 and fp16" crash: when the model serves in fp16, q/k/v reach the kernel
+    fp16, Triton's tl.dot returns the scores fp16, and any per-operand cast in the
+    value matmul then mixes dtypes. flash_attention_forward now promotes the whole
+    kernel to fp32 and casts the output back, so fp16 in -> fp16 out, numerically
+    equal to the fp32 reference up to the final fp16 round-trip (hence the looser
+    fp16 tolerance instead of the 1e-3 used for the fp32 parity tests above).
+    """
+    from src.engine.kernels.flash_attention import flash_attention_forward
+
+    torch.manual_seed(4)
+    B, S = 2, 200
+    q32 = _rand(B, NH, S, D)
+    k32 = _rand(B, NH, S, D)
+    v32 = _rand(B, NH, S, D)
+
+    ref = F.scaled_dot_product_attention(q32, k32, v32, is_causal=causal)
+
+    out = flash_attention_forward(q32.half(), k32.half(), v32.half(), causal=causal)
+    assert out.dtype == torch.float16, "kernel must hand back the caller's fp16 dtype"
+    torch.testing.assert_close(out.float(), ref, atol=2e-2, rtol=0)
+
+
+@cuda_only
 def test_causal_masking_is_actually_applied():
     """Causal correctness: causal output must equal a hand-masked full softmax,
     and must DIFFER from the non-causal output (proving the mask does work)."""
