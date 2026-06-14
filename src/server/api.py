@@ -128,6 +128,11 @@ _lora_model: LoRALlamaModel | None = None
 # /tuning-log. None until _init_engine runs.
 _profiler: Any = None
 _auto_tuner: Any = None
+# CARL coordinated controller. None unless ENABLE_CARL is set (backward compat:
+# a server started without it is byte-identical to before). When active, the
+# pumper calls _carl_controller.maybe_step() once per scheduler step and the
+# /carl/* routes expose its state. See src/carl/.
+_carl_controller: Any = None
 _sched_lock = threading.Lock()
 _token_streams: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = {}
 _streams_lock = threading.Lock()
@@ -139,6 +144,15 @@ _pump_shutdown = threading.Event()
 # ---------------------------------------------------------------------------
 # Engine init.
 # ---------------------------------------------------------------------------
+
+
+def _carl_enabled() -> bool:
+    """Whether the CARL coordinated controller should be constructed.
+
+    Opt-in via the ENABLE_CARL env var (truthy: "1"/"true"/"yes"), mirroring the
+    ENABLE_SLA_SCHEDULER gate. Off by default so the engine is unchanged.
+    """
+    return os.environ.get("ENABLE_CARL", "").strip().lower() in ("1", "true", "yes")
 
 
 def _push_to_stream(payload: dict, request_id: str) -> None:
@@ -229,13 +243,19 @@ def _pumper_loop() -> None:
                     _auto_tuner.observe(_scheduler)
                 if _profiler is not None:
                     metrics.set_bottleneck(_profiler.bottleneck())
+                # CARL: one coordinated control cycle, self-gated to its observe
+                # interval. Runs under _sched_lock so its live param mutations are
+                # race-free with the scheduler step above. Disabled (None) by
+                # default, so this is a no-op unless ENABLE_CARL was set.
+                if _carl_controller is not None:
+                    _carl_controller.maybe_step(_scheduler._step_idx)
             time.sleep(0)
 
 
 def _init_engine() -> None:
     """Load the model exactly once. Idempotent for tests + threads."""
     global _event_bus, _scheduler, _tokenizer, _pump_thread, _lora_manager, _lora_model
-    global _base_model, _profiler, _auto_tuner
+    global _base_model, _profiler, _auto_tuner, _carl_controller
     if _scheduler is not None:
         return
 
@@ -313,6 +333,28 @@ def _init_engine() -> None:
     _profiler = StepProfiler(window=100)
     _scheduler.profiler = _profiler
     _auto_tuner = AutoTuner(_profiler)
+
+    # CARL coordinated controller (opt-in via ENABLE_CARL). It JOINTLY adapts the
+    # scheduler knobs the AutoTuner tunes independently, plus speculation depth,
+    # routing, and eviction -- one bandit decision per observe interval. We wire
+    # it to the scheduler (the only component the public server runs live); the
+    # spec decoder / router / evicting cache slots are None here, so CARL drives
+    # the scheduler subset and leaves the rest untouched. With ENABLE_CARL unset
+    # this stays None and the engine behaves exactly as before. The independent
+    # AutoTuner above is left running too; in practice you would enable one or
+    # the other, but keeping both wired lets /tuning-log and /carl/* be compared
+    # side by side on the same engine.
+    if _carl_enabled():
+        from src.carl.bandit import PerRegimeBandit
+        from src.carl.config import all_arm_sets
+        from src.carl.controller import CARLController
+        from src.carl.state import FEATURE_DIM
+
+        _carl_controller = CARLController(
+            scheduler=_scheduler,
+            bandit=PerRegimeBandit(all_arm_sets(), d=FEATURE_DIM, alpha=0.5),
+            observe_interval=50,
+        )
 
     # Single pumper thread for the lifetime of the process. Daemon so it
     # doesn't block interpreter shutdown if the user Ctrl-Cs uvicorn.
@@ -678,6 +720,16 @@ def create_app() -> FastAPI:
             "tuning_log": _auto_tuner.log_as_dicts(),
             "current_bottleneck": _profiler.bottleneck() if _profiler else None,
         }
+
+    # -- /carl/* (coordinated adaptive runtime) ----------------------------
+    #
+    # Mounted unconditionally; the routes return {"enabled": false} until CARL is
+    # activated (ENABLE_CARL), so mounting is always safe and never changes the
+    # behaviour of the existing endpoints. The router reads the live controller
+    # through a callback so it always sees the current module global.
+    from src.carl.api import build_carl_router
+
+    app.include_router(build_carl_router(lambda: _carl_controller))
 
     # -- GET / -------------------------------------------------------------
     @app.get("/")
