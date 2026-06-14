@@ -196,14 +196,20 @@ def flash_attention_kernel(
                 mask=(offs_m[:, None] < S_q) & (offs_n[None, :] < S_k),
                 other=0.0,
             )
-            s = s + bias
+            # s is fp32 (tl.dot accumulator); cast the bias up so the add stays
+            # fp32 even when the mask tensor is fp16. No-op in fp32 mode.
+            s = s + bias.to(tl.float32)
 
         # --- online softmax update ---
         m_new = tl.maximum(m_i, tl.max(s, axis=1))      # new running max
         p = tl.exp(s - m_new[:, None])                  # this block's weights
         alpha = tl.exp(m_i - m_new)                     # correction for the past
         l_i = l_i * alpha + tl.sum(p, axis=1)
-        acc = acc * alpha[:, None] + tl.dot(p, v, allow_tf32=False)
+        # tl.dot requires both operands to share a dtype. In fp16 mode v is
+        # loaded as fp16 while p is fp32 (tl.dot above accumulates in fp32, and
+        # the online-softmax exp keeps it fp32), so cast v up to fp32 here. In
+        # fp32 mode this is a no-op, so parity is unaffected.
+        acc = acc * alpha[:, None] + tl.dot(p, v.to(tl.float32), allow_tf32=False)
         m_i = m_new
 
     # Normalize. No real query row is ever fully masked (every row attends to

@@ -319,14 +319,21 @@ def run_live(n_requests: int = 50, seed: int = 0) -> dict:
     drives. It loads TinyLlama once, then serves each scenario twice.
     """
     import random
+    import sys
+    import traceback
 
     # fp16 on GPU (the real serving dtype); fp32 on CPU where half is unsupported
     # / slow. The harness still runs on CPU so it can be smoke-tested without a GPU.
     dtype = torch.float16 if DEVICE.type == "cuda" else torch.float32
-    print(f"Device: {DEVICE} | dtype: {dtype}")
+    # flush=True everywhere below: this module runs as a subprocess captured by
+    # the notebook (docs/run_benchmarks.ipynb cell 6c). Without flushing, a long
+    # GPU run that later errors or is killed (e.g. OOM) would surface NOTHING --
+    # the buffered stdout dies with the process. Flushing makes progress visible
+    # as it happens, so the cell can never appear to "fail silently".
+    print(f"Device: {DEVICE} | dtype: {dtype}", flush=True)
     if DEVICE.type != "cuda":
         print("WARNING: no CUDA device -- running on CPU. Numbers are for a smoke "
-              "test only; run on a Colab GPU for representative results.\n")
+              "test only; run on a Colab GPU for representative results.\n", flush=True)
 
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -343,28 +350,48 @@ def run_live(n_requests: int = 50, seed: int = 0) -> dict:
         specs_base = _build_workload(tokenizer, scenario, n_requests, random.Random(seed))
         specs_carl = _build_workload(tokenizer, scenario, n_requests, random.Random(seed))
 
-        print(f"\n--- {scenario}: {n_requests} requests, baseline vs CARL ---")
-        base = _run_config(model, tokenizer, specs_base, use_carl=False, seed=seed)
-        carl = _run_config(model, tokenizer, specs_carl, use_carl=True, seed=seed)
+        print(f"\n--- {scenario}: {n_requests} requests, baseline vs CARL ---", flush=True)
+        # Guard each scenario: if one arm raises on a given box (a kernel dtype
+        # mismatch, an OOM, a driver hiccup), print the FULL traceback and carry
+        # on, so the surviving scenarios still produce a table. Failing loudly
+        # but partially beats killing the whole cell with no output.
+        try:
+            base = _run_config(model, tokenizer, specs_base, use_carl=False, seed=seed)
+            carl = _run_config(model, tokenizer, specs_carl, use_carl=True, seed=seed)
+        except Exception:
+            print(f"[{scenario}] FAILED -- skipping (traceback below):", flush=True)
+            traceback.print_exc()
+            sys.stdout.flush()
+            results["scenarios"][scenario] = {"error": traceback.format_exc()}
+            continue
 
         base_row = {"scenario": scenario, "config": "baseline", **base}
         carl_row = {"scenario": scenario, "config": "carl_adaptive", **carl}
         rows.extend([base_row, carl_row])
         results["scenarios"][scenario] = {"baseline": base, "carl_adaptive": carl}
 
-    print()
-    _print_table(rows)
+    print(flush=True)
+    if rows:
+        _print_table(rows)
+    else:
+        # Every scenario errored -- make that unmistakable rather than emitting an
+        # empty table the notebook would silently render as nothing.
+        print("ERROR: no scenario completed; see the tracebacks above.", flush=True)
 
     # Per-scenario CARL-vs-baseline throughput delta (prose; ignored by the table
-    # parser but useful in the raw output and to a human reader).
-    print()
+    # parser but useful in the raw output and to a human reader). Only scenarios
+    # that actually ran (have a 'baseline' entry) get a delta line.
+    print(flush=True)
     for scenario in scenarios:
-        b = results["scenarios"][scenario]["baseline"]["throughput_tok_s"]
-        c = results["scenarios"][scenario]["carl_adaptive"]["throughput_tok_s"]
+        sc = results["scenarios"].get(scenario, {})
+        if "baseline" not in sc:
+            continue
+        b = sc["baseline"]["throughput_tok_s"]
+        c = sc["carl_adaptive"]["throughput_tok_s"]
         delta = (c - b) / b * 100.0 if b > 0 else 0.0
-        adapt = results["scenarios"][scenario]["carl_adaptive"].get("adaptations", 0)
+        adapt = sc["carl_adaptive"].get("adaptations", 0)
         print(f"{scenario:>14}: CARL throughput {c:6.1f} vs baseline {b:6.1f} tok/s "
-              f"({delta:+.1f}%), {adapt} live config changes")
+              f"({delta:+.1f}%), {adapt} live config changes", flush=True)
 
     DOCS.mkdir(exist_ok=True)
     LIVE_RESULTS_PATH.write_text(json.dumps(results, indent=2), encoding="utf-8")
