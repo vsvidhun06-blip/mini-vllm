@@ -120,6 +120,22 @@ class LLMRouter:
             raise ValueError("LLMRouter needs at least one ModelConfig")
         self.configs = configs
         self.classifier = classifier
+
+        # ---- CARL live-tunable knobs (advisory) -------------------------
+        # These two attributes exist so the CARL controller has explicit, named
+        # router parameters to drive at runtime (its _apply only writes knobs a
+        # component actually declares). They are deliberately additive and do
+        # NOT alter the default complexity-based routing policy below:
+        #   * routing_threshold   -- a complexity-score cutoff a future
+        #     score-based routing path can consult; recorded here so CARL can
+        #     adapt it per regime without the router needing a code change.
+        #   * cache_affinity_weight -- how strongly a cache-affinity-aware
+        #     variant should bias toward a model whose KV the prefix cache
+        #     already holds. 0.0 == ignore affinity (the current behaviour).
+        # Both start at neutral values, so the existing routing tests are
+        # unaffected; CARL overwrites them live.
+        self.routing_threshold = 0.5
+        self.cache_affinity_weight = 0.0
         # FeatureExtractor for the rule-based classifier path. The embedding
         # classifier takes the raw prompt and does its own extraction, so this
         # is only used when the classifier consumes a feature dict.
