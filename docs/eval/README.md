@@ -64,12 +64,17 @@ Each script is runnable standalone from the repo root and self-bootstraps its
 import path:
 
 ```bash
-python scripts/eval/ablation.py                 # ablation study
+python scripts/eval/ablation.py                 # ablation study (simulation)
 python scripts/eval/workload_suite.py           # workload diversity
 python scripts/eval/oracle_comparison.py        # oracle gap
 python scripts/eval/sensitivity.py              # sensitivity sweeps
 python scripts/eval/statistical_validation.py   # paired t-test
+python scripts/eval/ablation_live.py            # ablation on REAL TinyLlama (GPU)
 ```
+
+`ablation_live.py` is the only **measured** (non-simulation) script: it reuses
+`src/carl/live.py`'s harness to run the ablation through actual TinyLlama
+inference on a GPU. See "Live ablation" below for its important scope limitation.
 
 Useful flags (every script has `--out` to redirect its JSON):
 
@@ -157,6 +162,21 @@ of the script. Read these sweeps as *"CARL stays effective across the range"*:
 it ties Static-Best where the setting stays in the baseline regime and gains
 ~8–11% throughput once the setting induces a contrasting regime.
 
+### Live ablation (`ablation_live.py`) — MEASURED, not simulated
+This is the hardware counterpart to `ablation.py`: the same eight configs, but run
+through real TinyLlama inference (`src/carl/live.py`'s `ContinuousBatchScheduler`)
+over NON-STATIONARY (25 INTERACTIVE → 25 BATCH), 3 runs, reporting measured
+throughput / TTFT / TPOT. **Scope limitation (read before interpreting):** the
+live harness is single-model and wires CARL to the **scheduler only**, with
+speculation pinned off (TinyLlama self-spec is below break-even), no router, and
+KV eviction inactive at these sizes. Therefore **only `CARL-NoSched` and
+`CARL-NoChunk` (plus `Static-Best`/`Oracle`) differ from `CARL-Full`** —
+`CARL-NoSpec`/`CARL-NoCache`/`CARL-NoRouter` measure identically to `CARL-Full`
+and are marked `no*` in the table's `live?` column. That is the honest result: it
+shows the *scheduler* is what moves real single-GPU TinyLlama metrics, while the
+simulation ablation is the one that can vary all five subsystems. Needs a GPU
+(runs on CPU as a slow smoke test).
+
 ### Statistical validation (`statistical_validation.py`)
 A **paired t-test** (H0: equal mean throughput) over N=30 seeds. We report the
 effect size, 95% CIs and the two-sided p-value. **Caveat:** the cost model is
@@ -176,6 +196,7 @@ p-value is not comparable to one measured on hardware.
 | `oracle_comparison.py` | `docs/eval/oracle_results.json` |
 | `sensitivity.py` | `docs/eval/sensitivity_results.json` |
 | `statistical_validation.py` | `docs/eval/stats_results.json` |
+| `ablation_live.py` (GPU) | `docs/eval/ablation_live_results.json` |
 
 All tables are printed as GitHub-flavoured pipe tables, so the notebook's
 `to_md_table()` renders them straight into `docs/benchmarks.md`.
