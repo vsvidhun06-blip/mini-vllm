@@ -166,6 +166,7 @@ class TransformerBlock(nn.Module):
         max_seq_len: int,
         rope_base: float,
         rms_eps: float,
+        qkv_bias: bool = False,
     ) -> None:
         super().__init__()
         self.attn_norm = RMSNorm(hidden_size, eps=rms_eps)
@@ -175,6 +176,7 @@ class TransformerBlock(nn.Module):
             num_kv_heads=num_kv_heads,
             max_seq_len=max_seq_len,
             rope_base=rope_base,
+            qkv_bias=qkv_bias,
         )
         self.mlp_norm = RMSNorm(hidden_size, eps=rms_eps)
         self.mlp = SwiGLUMLP(hidden_size, intermediate_size)
@@ -238,6 +240,8 @@ class LlamaConfig:
         rms_norm_eps: float,
         rope_theta: float,
         tie_word_embeddings: bool,
+        attention_bias: bool = False,
+        model_type: str = "llama",
     ) -> None:
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
@@ -249,11 +253,28 @@ class LlamaConfig:
         self.rms_norm_eps = rms_norm_eps
         self.rope_theta = rope_theta
         self.tie_word_embeddings = tie_word_embeddings
+        # Qwen2 keeps a learned Q/K/V bias; LLaMA does not. Threaded into every
+        # attention block so the right family loads without retuning anything.
+        self.attention_bias = attention_bias
+        self.model_type = model_type
 
     @classmethod
     def from_hf_json(cls, path: str | Path) -> "LlamaConfig":
         with open(path, "r", encoding="utf-8") as f:
             d = json.load(f)
+        model_type = d.get("model_type", "llama")
+        # Architecture gate: the from-scratch engine faithfully represents the
+        # LLaMA family and Qwen2 (same RMSNorm + SwiGLU + GQA + RoPE skeleton,
+        # Qwen2 just adds a Q/K/V bias). Anything else (e.g. Gemma's GeGLU +
+        # embedding scaling + (1+w) norms) would load WRONG, so we refuse rather
+        # than silently produce garbage -- the caller turns this into a skip.
+        if model_type not in SUPPORTED_MODEL_TYPES:
+            raise UnsupportedArchitectureError(
+                f"model_type '{model_type}' is not supported by the from-scratch "
+                f"engine (supported: {sorted(SUPPORTED_MODEL_TYPES)})")
+        # Qwen2 uses a Q/K/V bias whether or not the JSON spells it out; LLaMA
+        # honours an explicit attention_bias flag (default False).
+        attention_bias = bool(d.get("attention_bias", model_type == "qwen2"))
         return cls(
             vocab_size=d["vocab_size"],
             hidden_size=d["hidden_size"],
@@ -267,6 +288,8 @@ class LlamaConfig:
             rms_norm_eps=d.get("rms_norm_eps", 1e-5),
             rope_theta=d.get("rope_theta", 10000.0),
             tie_word_embeddings=d.get("tie_word_embeddings", False),
+            attention_bias=attention_bias,
+            model_type=model_type,
         )
 
 
@@ -289,6 +312,7 @@ class LlamaModel(nn.Module):
                 max_seq_len=config.max_position_embeddings,
                 rope_base=config.rope_theta,
                 rms_eps=config.rms_norm_eps,
+                qkv_bias=config.attention_bias,
             )
             for _ in range(config.num_hidden_layers)
         ])
@@ -584,6 +608,17 @@ class LlamaModel(nn.Module):
 
 MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
+# Architectures the from-scratch engine can load FAITHFULLY (not just without
+# erroring). LLaMA family + Qwen2 share the RMSNorm/SwiGLU/GQA/RoPE skeleton;
+# Qwen2 only differs by a learned Q/K/V bias (handled via config.attention_bias).
+SUPPORTED_MODEL_TYPES = {"llama", "qwen2"}
+
+
+class UnsupportedArchitectureError(RuntimeError):
+    """Raised when a checkpoint's architecture the engine cannot represent
+    exactly (e.g. Gemma's GeGLU + embedding scaling). Callers catch this to
+    skip the model rather than load wrong weights."""
+
 
 def _remap_hf_key(hf_key: str) -> str | None:
     """Translate one HF parameter name to our module's name.
@@ -610,6 +645,10 @@ def _remap_hf_key(hf_key: str) -> str | None:
             "self_attn.k_proj.weight":           "attn.k_proj.weight",
             "self_attn.v_proj.weight":           "attn.v_proj.weight",
             "self_attn.o_proj.weight":           "attn.o_proj.weight",
+            # Qwen2's Q/K/V bias vectors (absent in LLaMA checkpoints).
+            "self_attn.q_proj.bias":             "attn.q_proj.bias",
+            "self_attn.k_proj.bias":             "attn.k_proj.bias",
+            "self_attn.v_proj.bias":             "attn.v_proj.bias",
             "post_attention_layernorm.weight":   "mlp_norm.weight",
             "mlp.gate_proj.weight":              "mlp.gate_proj.weight",
             "mlp.up_proj.weight":                "mlp.up_proj.weight",
@@ -625,6 +664,14 @@ def load_tinyllama_from_hf(
     dtype: torch.dtype = torch.float32,
 ) -> tuple[LlamaModel, LlamaConfig]:
     """Build a LlamaModel and populate it from the HF safetensors checkpoint.
+
+    Despite the historical name, this loads any LLaMA-FAMILY checkpoint by id:
+    the default is TinyLlama (so every existing caller and test is unchanged),
+    but it also loads Qwen2 (which adds a Q/K/V bias and ties its embeddings).
+    Architectures the from-scratch engine cannot represent exactly raise
+    UnsupportedArchitectureError (via LlamaConfig.from_hf_json) so the caller can
+    skip rather than load wrong weights. See `load_model_from_hf` for the
+    architecture-neutral alias.
 
     We deliberately avoid `transformers.AutoModelForCausalLM` -- only
     `huggingface_hub` (which is just a download client) and `safetensors`
@@ -671,7 +718,14 @@ def load_tinyllama_from_hf(
     # fine.
     rope_buffers = {f"layers.{i}.attn.rope_cos" for i in range(config.num_hidden_layers)} | \
                    {f"layers.{i}.attn.rope_sin" for i in range(config.num_hidden_layers)}
-    real_missing = [m for m in missing if m not in rope_buffers]
+    ignorable = set(rope_buffers)
+    # Tied-embedding models (e.g. Qwen2-0.5B) ship NO lm_head.weight: the LM head
+    # IS the embedding matrix. LlamaModel.__init__ already pointed lm_head.weight
+    # at embed.weight, so loading embed.weight also populates the head -- the
+    # "missing" lm_head.weight here is expected, not an error.
+    if config.tie_word_embeddings:
+        ignorable.add("lm_head.weight")
+    real_missing = [m for m in missing if m not in ignorable]
     if real_missing or unexpected:
         raise RuntimeError(
             f"Weight load mismatch. Missing: {real_missing}. Unexpected: {unexpected}"
@@ -691,6 +745,12 @@ def load_tinyllama_from_hf(
     model.to(dtype)
     model.to(DEVICE)
     return model, config
+
+
+# Architecture-neutral alias. New code (e.g. the cross-model harness) should call
+# this; load_tinyllama_from_hf stays as the back-compat name every existing
+# caller already imports.
+load_model_from_hf = load_tinyllama_from_hf
 
 
 # ---------------------------------------------------------------------------

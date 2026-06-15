@@ -214,6 +214,7 @@ class MultiHeadAttention(nn.Module):
         num_kv_heads: int,
         max_seq_len: int,
         rope_base: float = 10000.0,
+        qkv_bias: bool = False,
     ) -> None:
         super().__init__()
         assert hidden_size % num_heads == 0, "hidden must divide evenly into heads"
@@ -225,13 +226,17 @@ class MultiHeadAttention(nn.Module):
         self.head_dim = hidden_size // num_heads  # D
         self.group_size = num_heads // num_kv_heads  # G
 
-        # Linear projections. LLaMA uses NO bias on these, unlike GPT-2.
+        # Linear projections. LLaMA uses NO bias on these, unlike GPT-2 -- which
+        # is why qkv_bias DEFAULTS to False and TinyLlama / every existing test
+        # is byte-identical. Qwen2, however, keeps a learned bias on Q/K/V (but
+        # NOT on the output projection); set qkv_bias=True for that family so the
+        # checkpoint's bias vectors have a home to load into.
         # Q maps the full hidden to all 32 heads worth of dim:  H -> NQ * D
         # K and V map to the smaller KV-head count:             H -> NKV * D
         # The output projection mixes the heads back to H:      NQ * D -> H
-        self.q_proj = nn.Linear(hidden_size, num_heads * self.head_dim, bias=False)
-        self.k_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
-        self.v_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
+        self.q_proj = nn.Linear(hidden_size, num_heads * self.head_dim, bias=qkv_bias)
+        self.k_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=qkv_bias)
+        self.v_proj = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=qkv_bias)
         self.o_proj = nn.Linear(num_heads * self.head_dim, hidden_size, bias=False)
 
         # RoPE cache. Registered as a non-persistent buffer so it moves with
