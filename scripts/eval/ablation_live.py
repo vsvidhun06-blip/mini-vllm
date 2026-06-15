@@ -2,46 +2,35 @@
 CARL ablation on REAL TinyLlama inference (GPU) -- the measured counterpart to
 the simulation in scripts/eval/ablation.py.
 
-WHAT THIS IS
-------------
-This reuses src/carl/live.py's harness pattern: real TinyLlama weights, the real
-ContinuousBatchScheduler, real prefill/decode forward passes, with CARL driving
-the scheduler's knobs LIVE while requests are served. It runs eight
-configurations over the NON-STATIONARY scenario (25 INTERACTIVE then 25 BATCH
-requests injected mid-run, no notice) and reports wall-clock throughput / TTFT /
-TPOT, mean +/- std over N runs. Results go to docs/eval/ablation_live_results.json.
+It follows src/carl/live.py's inference pattern exactly: real TinyLlama weights,
+the real ContinuousBatchScheduler, real prefill/decode forward passes, fp16 on
+GPU, speculation pinned off. CARL drives the scheduler's knobs LIVE while requests
+are served. Ten configurations are run over a NON-STATIONARY scenario and reported
+as mean +/- std over N seeds, with full raw data, an adaptation trace, an
+environment capture, a validation-selected Static-Best, and a retrospective
+offline DynOracle upper bound.
 
-HOW THE ABLATIONS ARE APPLIED (no src/ changes)
------------------------------------------------
-Each "CARL-NoX" config freezes one knob group at the global default by building
-the per-regime bandit from FROZEN arm sets: every arm has the frozen knob pinned,
-so the controller can never vary it. CARL-Full uses the unmodified arms. Oracle
-switches the scheduler to DEFAULT_CONFIGS[regime] exactly at the regime boundary
-(perfect knowledge); Static-Best applies one fixed config (the best of the
-candidate set) for the whole run.
+!!! HONEST SCOPE -- READ BEFORE INTERPRETING THE TABLE !!!
+----------------------------------------------------------
+This is a SINGLE-MODEL live harness (like live.py). CARL is wired to the
+SCHEDULER ONLY, speculation is pinned off (TinyLlama self-spec is below
+break-even), there is no router (one model is served), and KV eviction never
+triggers at these request sizes. Therefore only the SCHEDULING ablations have a
+measurable effect:
 
-!!! HONEST LIMITATION -- READ BEFORE INTERPRETING THE TABLE !!!
---------------------------------------------------------------
-In this SINGLE-MODEL live harness (exactly like live.py) the controller is wired
-to the SCHEDULER ONLY, so only the scheduling knobs (max_batch_size, chunk_size)
-actually change what the GPU does. Consequently:
+  * CARL-NoSched (max_batch_size frozen) and CARL-NoChunk (chunk_size frozen)
+    change what the GPU does  -> real, measurable deltas vs CARL-Full.
+  * CARL-NoSpec / CARL-NoCache / CARL-NoRouter freeze knobs the live engine does
+    not act on here -> they measure ~= CARL-Full (flagged live_effective=false).
 
-  * CARL-NoSched, CARL-NoChunk  -> freeze scheduling knobs -> REAL, measurable
-    effect vs CARL-Full. These are the live-effective ablations.
-  * CARL-NoSpec    -> speculation is pinned OFF here (TinyLlama self-spec is below
-    break-even; see live.py), so freezing spec_k=0 changes nothing -> ~= CARL-Full.
-  * CARL-NoCache   -> the KV cache / H2O eviction is not wired to the controller
-    and never triggers at these sizes -> ~= CARL-Full.
-  * CARL-NoRouter  -> there is no router (one model is served) -> ~= CARL-Full.
-
-So rows that come out statistically identical to CARL-Full are EXPECTED: this
-table measures which subsystems matter for real single-GPU TinyLlama serving
-(answer: the scheduler), and is the honest hardware complement to the simulation
-ablation, which can vary all five subsystems. See docs/eval/README.md.
+So a near-zero contribution for those three is EXPECTED and honest: this table
+measures which subsystems move real single-GPU TinyLlama metrics (the scheduler),
+and complements the simulation ablation, which can vary all five subsystems. See
+docs/eval/README.md.
 
 Run:
-  python scripts/eval/ablation_live.py                 # 3 runs x 50 requests
-  python scripts/eval/ablation_live.py --runs 2 --limit 30   # quicker
+  python scripts/eval/ablation_live.py            # N=10, seeds 42..51, 50 requests
+  python scripts/eval/ablation_live.py --seeds 42,43,44 --limit 30   # quick
 """
 from __future__ import annotations
 
@@ -53,6 +42,7 @@ import sys
 import time
 import traceback
 from dataclasses import replace
+from datetime import datetime
 
 # --- path bootstrap so `python scripts/eval/ablation_live.py` finds src/ -----
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,81 +51,166 @@ if _REPO_ROOT not in sys.path:
 
 import torch  # noqa: E402
 
-from src.carl.bandit import LinUCBBandit, PerRegimeBandit  # noqa: E402
+from src.carl.bandit import (  # noqa: E402
+    LinUCBBandit, PerRegimeBandit, ThompsonSamplingBandit,
+)
 from src.carl.config import CARLConfig, DEFAULT_CONFIGS, all_arm_sets  # noqa: E402
 from src.carl.controller import SLO, CARLController  # noqa: E402
 from src.carl.state import FEATURE_DIM, MetricsTracker, WorkloadRegime  # noqa: E402
+from src.engine.auto_tuner import AutoTuner, TuningConfig  # noqa: E402
 from src.engine.device import DEVICE  # noqa: E402
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf  # noqa: E402
+from src.engine.profiler import StepProfiler  # noqa: E402
 from src.engine.scheduler import ContinuousBatchScheduler  # noqa: E402
 
-# Reuse live.py's prompt/workload/percentile helpers + pool sizing, so this
-# harness is byte-for-byte the same serving setup as the real-inference cell 6c.
+# Reuse live.py's prompt/workload/percentile helpers + pool sizing so this is the
+# exact same serving setup as the real-inference cell 6c.
 from src.carl.live import (  # noqa: E402
-    BLOCK_SIZE, NUM_BLOCKS, _build_workload, _make_prompt, _percentile,
+    BLOCK_SIZE, NUM_BLOCKS, _build_workload, _percentile,
 )
 
 DOCS_EVAL = os.path.join(_REPO_ROOT, "docs", "eval")
+RAW_DIR = os.path.join(DOCS_EVAL, "raw", "ablation")
 RESULTS_PATH = os.path.join(DOCS_EVAL, "ablation_live_results.json")
+SELECTION_PATH = os.path.join(DOCS_EVAL, "static_best_selection.json")
+ENV_PATH = os.path.join(DOCS_EVAL, "environment.json")
+TRACE_PATH = os.path.join(RAW_DIR, "carl_full_adaptation_trace.json")
 
-# TTFT-only SLO targets mirror the rest of the eval suite (TTFT < 200ms).
-_SLO = SLO(ttft_ms=200.0, tpot_ms=50.0, throughput_ref=50.0)
+DEFAULT_SEEDS = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
+VALIDATION_SEED = 999            # held out: never used for an eval run
+SLO_TTFT_MS = 200.0
+_SLO = SLO(ttft_ms=SLO_TTFT_MS, tpot_ms=50.0, throughput_ref=50.0)
+OBSERVE_INTERVAL = 10            # CARL control cycle cadence (steps)
 
-# Knob group each ablation freezes at the global default (None = CARL-Full).
-_DEF = CARLConfig()
-FREEZE = {
+# The validation search space (all 5 dimensions CARL adapts).
+SEARCH_SPACE = {
+    "max_batch_size": [4, 8, 16],
+    "spec_k": [0, 2, 4],
+    "routing_threshold": [0.3, 0.5, 0.7],
+    "eviction_threshold": [0.7, 0.8, 0.9],
+    "chunk_size": [64, 128, 256, 512],
+}
+N_LHS_CANDIDATES = 16
+
+# Per-config knob freeze (None = fully adaptive CARL-Full). Spec-exact values.
+_FREEZE = {
     "CARL-Full": None,
-    "CARL-NoSched": dict(max_batch_size=_DEF.max_batch_size, chunk_size=_DEF.chunk_size),
+    "CARL-NoSched": dict(max_batch_size=4),
     "CARL-NoSpec": dict(spec_k=0),
     "CARL-NoCache": dict(eviction_threshold=0.8),
     "CARL-NoRouter": dict(routing_threshold=0.5),
     "CARL-NoChunk": dict(chunk_size=256),
 }
-# Configs that actually change what the GPU does in this single-model harness.
-_LIVE_EFFECTIVE = {"CARL-Full", "CARL-NoSched", "CARL-NoChunk", "Static-Best", "Oracle"}
+# Configs whose frozen knob actually changes live inference in this harness.
+_LIVE_EFFECTIVE = {"CARL-Full", "CARL-NoSched", "CARL-NoChunk",
+                   "Static-Best", "AutoTuner", "CARL-Thompson", "DynOracle"}
 
-CONFIGS = list(FREEZE.keys()) + ["Static-Best", "Oracle"]
+# Run order: DynOracle is LAST (it needs CARL-Full's recorded rewards).
+CONFIGS = ["CARL-Full", "CARL-NoSched", "CARL-NoSpec", "CARL-NoCache",
+           "CARL-NoRouter", "CARL-NoChunk", "Static-Best", "AutoTuner",
+           "CARL-Thompson", "DynOracle"]
+
+_REGIMES = (WorkloadRegime.INTERACTIVE, WorkloadRegime.BATCH)
 
 
-def _frozen_arms(freeze: dict | None) -> dict:
-    """all_arm_sets() with `freeze` applied (and clamped) to every arm."""
-    base = all_arm_sets()
-    if not freeze:
-        return base
-    return {r: [replace(a, **freeze).clamp() for a in arms] for r, arms in base.items()}
+# ===========================================================================
+# Environment capture.
+# ===========================================================================
+
+
+def capture_environment() -> dict:
+    env = {
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
+        "cuda": torch.version.cuda,
+        "torch": torch.__version__,
+        "python": sys.version,
+        "timestamp": datetime.now().isoformat(),
+    }
+    os.makedirs(DOCS_EVAL, exist_ok=True)
+    with open(ENV_PATH, "w", encoding="utf-8") as f:
+        json.dump(env, f, indent=2)
+    print(f"Environment: {env['gpu']} | CUDA {env['cuda']} | torch {env['torch']}",
+          flush=True)
+    return env
+
+
+# ===========================================================================
+# Latin Hypercube Sampling over the discrete search space.
+# ===========================================================================
+
+
+def latin_hypercube(n: int, space: dict, seed: int) -> list:
+    """`n` CARLConfigs sampled by LHS over the discrete `space`.
+
+    Stratified one-sample-per-bin in [0,1) per dimension, independently shuffled
+    (the LHS property: every 1-D projection is evenly covered), then each [0,1)
+    value is quantised onto that dimension's discrete level list. Covers the full
+    5-D space with 16 points instead of the 3x3x3x3x4 = 324 exhaustive grid.
+    """
+    import random
+    rng = random.Random(seed)
+    strata = {}
+    for dim, levels in space.items():
+        s = [(i + rng.random()) / n for i in range(n)]
+        rng.shuffle(s)
+        strata[dim] = s
+
+    configs = []
+    for i in range(n):
+        kw = {}
+        for dim, levels in space.items():
+            idx = min(len(levels) - 1, int(strata[dim][i] * len(levels)))
+            kw[dim] = levels[idx]
+        configs.append(CARLConfig(**kw).clamp())
+    return configs
+
+
+# ===========================================================================
+# The serving loop (mirrors live.py's _run_config, with richer instrumentation).
+# ===========================================================================
 
 
 def _apply_sched(sched, cfg: CARLConfig) -> None:
-    """Push a config's SCHEDULING knobs into the live scheduler (spec stays off).
-
-    Only the knobs the scheduler reads matter here; speculation is force-pinned
-    off exactly as in live.py, so a config's spec_k never turns it on.
-    """
+    """Push a config's SCHEDULING knobs into the live scheduler (spec stays off)."""
     sched.max_batch_size = int(cfg.max_batch_size)
     sched.chunk_size = int(cfg.chunk_size)
     sched.enable_spec_decode = False
 
 
-def _serve(sched, specs, *, controller=None, tracker=None, oracle_phase1=None) -> dict:
-    """Serve `specs` through `sched` once; return throughput + TTFT/TPOT metrics.
+def _new_scheduler(model) -> ContinuousBatchScheduler:
+    d = CARLConfig()
+    return ContinuousBatchScheduler(
+        model, max_batch_size=d.max_batch_size, num_blocks=NUM_BLOCKS,
+        block_size=BLOCK_SIZE, chunk_size=d.chunk_size, enable_spec_decode=False,
+    )
 
-    Mirrors live.py's _run_config loop. `controller` (if given) runs one CARL
-    cycle every 10 steps and we re-pin speculation off after it. `oracle_phase1`
-    (if given) is the config applied the instant phase-1 (BATCH) requests are
-    injected -- the perfect-knowledge regime switch.
+
+def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
+           oracle_phase1=None) -> dict:
+    """Serve `specs` once; return per-request records, percentiles, overhead.
+
+    controller : a CARLController wired to `sched` (CARL configs). We time each
+        maybe_step and re-pin speculation off afterwards.
+    tuner      : an AutoTuner (the AutoTuner baseline); observed every step.
+    oracle_phase1 : config applied the instant the BATCH phase is injected
+        (DynOracle / Oracle perfect-knowledge switch).
     """
+    # rid -> static metadata, plus integer id in submission order.
+    meta = {}
+    for i, spec in enumerate(specs):
+        meta[spec.rid] = {
+            "request_id": i,
+            "prompt_len": int(spec.prompt_ids.shape[-1]),
+            "regime": "INTERACTIVE" if spec.phase == 0 else "BATCH",
+        }
+
     phase0 = [s for s in specs if s.phase == 0]
     phase1 = [s for s in specs if s.phase == 1]
-    submit_time: dict[str, float] = {}
-    first_tok: dict[str, float] = {}
-    last_tok: dict[str, float] = {}
-    tok_count: dict[str, int] = {}
+    submit_time, first_tok, last_tok, tok_count = {}, {}, {}, {}
 
     def _submit(spec) -> None:
         submit_time[spec.rid] = time.perf_counter()
         tok_count[spec.rid] = 0
-        # eos_token_id=None -> every request emits exactly max_new tokens, so all
-        # configs generate the same total and throughput is comparable.
         sched.add_request(spec.rid, spec.prompt_ids, max_new_tokens=spec.max_new,
                           eos_token_id=None)
 
@@ -143,8 +218,8 @@ def _serve(sched, specs, *, controller=None, tracker=None, oracle_phase1=None) -
     for spec in phase0:
         _submit(spec)
 
-    ttft_list: list[float] = []
-    tpot_list: list[float] = []
+    records: list[dict] = []
+    decision_us: list[float] = []
     total_tokens = 0
     finished_count = 0
     phase1_done = (len(phase1) == 0)
@@ -166,12 +241,11 @@ def _serve(sched, specs, *, controller=None, tracker=None, oracle_phase1=None) -
         for r in sched.get_finished():
             rid = r.request_id
             finished_count += 1
-            ttft_ms = (first_tok[rid] - submit_time[rid]) * 1000.0
             n = tok_count[rid]
+            ttft_ms = (first_tok[rid] - submit_time[rid]) * 1000.0
             tpot_ms = ((last_tok[rid] - first_tok[rid]) / (n - 1) * 1000.0) if n > 1 else 0.0
-            ttft_list.append(ttft_ms)
-            if n > 1:
-                tpot_list.append(tpot_ms)
+            rec = dict(meta[rid], tokens_generated=n, ttft_ms=ttft_ms, tpot_ms=tpot_ms)
+            records.append(rec)
             if tracker is not None:
                 tracker.record_request(ttft_ms, tpot_ms)
 
@@ -180,8 +254,6 @@ def _serve(sched, specs, *, controller=None, tracker=None, oracle_phase1=None) -
             if dt > 0 and emitted:
                 tracker.record_throughput(len(emitted) / dt)
 
-        # Inject the BATCH phase once half of phase 0 has finished (the surprise
-        # regime flip); the Oracle switches its config at exactly this moment.
         if not phase1_done and finished_count >= max(1, len(phase0) // 2):
             for spec in phase1:
                 _submit(spec)
@@ -190,182 +262,414 @@ def _serve(sched, specs, *, controller=None, tracker=None, oracle_phase1=None) -
                 _apply_sched(sched, oracle_phase1)
 
         if controller is not None:
-            controller.maybe_step(sched._step_idx)
-            sched.enable_spec_decode = False   # re-pin: CARL may have flipped it on
+            d0 = time.perf_counter()
+            entry = controller.maybe_step(sched._step_idx)
+            d1 = time.perf_counter()
+            sched.enable_spec_decode = False
+            if entry is not None:                 # an actual control decision
+                decision_us.append((d1 - d0) * 1e6)
+        if tuner is not None:
+            tuner.observe(sched, step=sched._step_idx)
 
     wall = time.perf_counter() - t0
-    throughput = total_tokens / wall if wall > 0 else 0.0
+    records.sort(key=lambda r: r["request_id"])
+    ttfts = [r["ttft_ms"] for r in records]
+    tpots = [r["tpot_ms"] for r in records if r["tokens_generated"] > 1]
+    slo_rate = (100.0 * sum(1 for t in ttfts if t < SLO_TTFT_MS) / len(ttfts)
+                if ttfts else 0.0)
+    overhead_pct = (sum(decision_us) / 1e6 / wall * 100.0) if wall > 0 else 0.0
+
     return {
-        "throughput_tok_s": throughput,
-        "ttft_p50_ms": _percentile(ttft_list, 50),
-        "ttft_p99_ms": _percentile(ttft_list, 99),
-        "tpot_p50_ms": _percentile(tpot_list, 50),
-        "tpot_p99_ms": _percentile(tpot_list, 99),
-        "total_tokens": total_tokens,
+        "requests": records,
+        "throughput_tps": total_tokens / wall if wall > 0 else 0.0,
+        "ttft_p50": _percentile(ttfts, 50),
+        "ttft_p99": _percentile(ttfts, 99),
+        "tpot_p50": _percentile(tpots, 50),
+        "tpot_p99": _percentile(tpots, 99),
+        "slo_rate": slo_rate,
         "wall_s": wall,
+        "decision_us": decision_us,
+        "overhead_pct": overhead_pct,
     }
 
 
-def _new_scheduler(model) -> ContinuousBatchScheduler:
-    """A scheduler at the global defaults, speculation off (live.py settings)."""
-    return ContinuousBatchScheduler(
-        model, max_batch_size=_DEF.max_batch_size, num_blocks=NUM_BLOCKS,
-        block_size=BLOCK_SIZE, chunk_size=_DEF.chunk_size, enable_spec_decode=False,
-    )
+# ===========================================================================
+# Building / running one configuration.
+# ===========================================================================
 
 
-def run_config(name: str, model, tokenizer, n: int, seed: int,
-               static_cfg: CARLConfig | None = None) -> dict:
-    """Serve one configuration once over a fresh NON-STATIONARY workload."""
+def _frozen_arms(freeze: dict | None) -> dict:
+    base = all_arm_sets()
+    if not freeze:
+        return base
+    return {r: [replace(a, **freeze).clamp() for a in arms] for r, arms in base.items()}
+
+
+def _arm_index(arms: list, cfg: CARLConfig) -> int:
+    """Index of `cfg` within an arm list (best-effort; -1 if not found)."""
+    for i, a in enumerate(arms):
+        if a == cfg:
+            return i
+    return -1
+
+
+def run_config(name, model, tokenizer, n, seed, *, static_cfg=None,
+               oracle_arms=None) -> dict:
+    """Serve one configuration once over a fresh NON-STATIONARY workload.
+
+    Returns the _serve dict, augmented for CARL configs with `decisions`
+    (list of (regime, arm, reward, config)) extracted from the controller log.
+    """
     import random
-
     specs = _build_workload(tokenizer, "NON-STATIONARY", n, random.Random(seed))
     sched = _new_scheduler(model)
-    controller = tracker = oracle_phase1 = None
+    controller = tracker = tuner = oracle_phase1 = None
 
     if name == "Static-Best":
         _apply_sched(sched, static_cfg or CARLConfig())
-    elif name == "Oracle":
-        # Perfect knowledge: INTERACTIVE config for phase 0, BATCH at the flip.
-        _apply_sched(sched, DEFAULT_CONFIGS[WorkloadRegime.INTERACTIVE])
-        oracle_phase1 = DEFAULT_CONFIGS[WorkloadRegime.BATCH]
-    else:  # CARL-Full or a CARL-NoX ablation: a bandit over (frozen) arm sets.
+    elif name == "AutoTuner":
+        # Real AutoTuner: attach a StepProfiler so the live scheduler feeds it
+        # genuine per-phase timings, then tune every OBSERVE_INTERVAL steps.
+        sched.profiler = StepProfiler(window=100)
+        tuner = AutoTuner(sched.profiler,
+                          config=TuningConfig(tune_interval=OBSERVE_INTERVAL, cooldown=20))
+    elif name == "DynOracle":
+        # Apply the retrospectively-best arm per regime (computed from CARL-Full).
+        _apply_sched(sched, oracle_arms[WorkloadRegime.INTERACTIVE])
+        oracle_phase1 = oracle_arms[WorkloadRegime.BATCH]
+    else:  # CARL-Full or a CARL-NoX ablation, optionally Thompson.
         tracker = MetricsTracker(window=max(50, n))
-        bandit = PerRegimeBandit(_frozen_arms(FREEZE[name]), d=FEATURE_DIM,
-                                 bandit_cls=LinUCBBandit, alpha=0.5)
+        if name == "CARL-Thompson":
+            bandit = PerRegimeBandit(all_arm_sets(), d=FEATURE_DIM,
+                                     bandit_cls=ThompsonSamplingBandit, v=0.5, seed=seed)
+        else:
+            bandit = PerRegimeBandit(_frozen_arms(_FREEZE[name]), d=FEATURE_DIM,
+                                     bandit_cls=LinUCBBandit, alpha=0.5)
         controller = CARLController(scheduler=sched, bandit=bandit,
-                                    observe_interval=10, slo=_SLO, metrics=tracker)
+                                    observe_interval=OBSERVE_INTERVAL,
+                                    slo=_SLO, metrics=tracker)
 
-    return _serve(sched, specs, controller=controller, tracker=tracker,
-                  oracle_phase1=oracle_phase1)
+    out = _serve(sched, specs, controller=controller, tracker=tracker,
+                 tuner=tuner, oracle_phase1=oracle_phase1)
+
+    # Extract per-decision (regime, arm, reward, config) from the controller log
+    # for the CARL configs -- feeds the adaptation trace and the DynOracle.
+    if controller is not None:
+        decisions = []
+        for e in controller.controller_log:
+            arms = controller.bandit.arms(e.regime)
+            decisions.append({
+                "regime": e.regime, "arm": _arm_index(arms, e.config),
+                "reward": e.reward, "config": e.config,
+            })
+        out["decisions"] = decisions
+    return out
 
 
-def _resolve_static_best(model, tokenizer, n: int, seed: int) -> tuple:
-    """Pick the single best static config for the NON-STATIONARY workload.
+# ===========================================================================
+# Static-Best via held-out validation (LHS search).
+# ===========================================================================
 
-    Probes the natural candidates (global default + the INTERACTIVE/BATCH
-    hand-tuned defaults) once each and keeps the highest-throughput one.
-    """
-    candidates = {
-        "default": CARLConfig(),
-        "interactive": DEFAULT_CONFIGS[WorkloadRegime.INTERACTIVE],
-        "batch": DEFAULT_CONFIGS[WorkloadRegime.BATCH],
+
+def select_static_best(model, tokenizer, val_n: int) -> tuple:
+    print(f"\n[validation] LHS {N_LHS_CANDIDATES} candidates x {val_n} requests "
+          f"(seed {VALIDATION_SEED})", flush=True)
+    candidates = latin_hypercube(N_LHS_CANDIDATES, SEARCH_SPACE, VALIDATION_SEED)
+    throughputs = []
+    for j, cfg in enumerate(candidates):
+        m = run_config("Static-Best", model, tokenizer, val_n, VALIDATION_SEED,
+                       static_cfg=cfg)
+        throughputs.append(m["throughput_tps"])
+        print(f"  cand {j+1:2d}/{N_LHS_CANDIDATES}: mb={cfg.max_batch_size:2d} "
+              f"cs={cfg.chunk_size:3d} k={cfg.spec_k} -> {m['throughput_tps']:6.1f} tok/s",
+              flush=True)
+    win = max(range(len(candidates)), key=lambda i: throughputs[i])
+    winner = candidates[win]
+    selection = {
+        "method": f"latin_hypercube_{N_LHS_CANDIDATES}_candidates",
+        "search_space": SEARCH_SPACE,
+        "candidates": [c.as_dict() for c in candidates],
+        "validation_throughputs": throughputs,
+        "winner": winner.as_dict(),
+        "validation_seed": VALIDATION_SEED,
     }
-    best_name, best_cfg, best_tps = None, None, float("-inf")
-    for cname, cfg in candidates.items():
-        m = run_config("Static-Best", model, tokenizer, n, seed, static_cfg=cfg)
-        if m["throughput_tok_s"] > best_tps:
-            best_name, best_cfg, best_tps = cname, cfg, m["throughput_tok_s"]
-    print(f"Static-Best resolved to '{best_name}' "
-          f"(mb={best_cfg.max_batch_size}, cs={best_cfg.chunk_size}, "
-          f"{best_tps:.1f} tok/s)")
-    return best_cfg, best_name
+    os.makedirs(DOCS_EVAL, exist_ok=True)
+    with open(SELECTION_PATH, "w", encoding="utf-8") as f:
+        json.dump(selection, f, indent=2)
+    print(f"[validation] winner: mb={winner.max_batch_size} cs={winner.chunk_size} "
+          f"({throughputs[win]:.1f} tok/s) -> {SELECTION_PATH}", flush=True)
+    return winner, selection
 
 
-def _mean_std(vals: list[float]) -> tuple:
+# ===========================================================================
+# DynOracle: retrospective best arm per regime, from CARL-Full's recorded rewards.
+# ===========================================================================
+
+
+def compute_dynoracle_arms(carl_full_decisions: list) -> tuple:
+    """Best arm per regime by mean recorded reward across all CARL-Full runs.
+
+    carl_full_decisions: flattened list of decision dicts from every CARL-Full
+    run. Returns ({regime: CARLConfig}, selection_metadata). This uses hindsight
+    from completed runs -- it is an offline upper bound, NOT deployable.
+    """
+    arms = all_arm_sets()
+    sums: dict = {r: {} for r in _REGIMES}
+    counts: dict = {r: {} for r in _REGIMES}
+    for d in carl_full_decisions:
+        r, a = d["regime"], d["arm"]
+        if r not in sums or a < 0:
+            continue
+        sums[r][a] = sums[r].get(a, 0.0) + d["reward"]
+        counts[r][a] = counts[r].get(a, 0) + 1
+
+    chosen, meta = {}, {}
+    for r in _REGIMES:
+        means = {a: sums[r][a] / counts[r][a] for a in sums[r]}
+        if means:
+            best_arm = max(means, key=means.get)
+        else:
+            best_arm = 0   # fallback: the regime's hand-tuned default (arm 0)
+        chosen[r] = arms[r][best_arm]
+        meta[r.value] = {
+            "best_arm": best_arm,
+            "mean_reward": means.get(best_arm, 0.0),
+            "config": arms[r][best_arm].as_dict(),
+            "per_arm_mean_reward": {str(a): means[a] for a in means},
+        }
+    return chosen, meta
+
+
+# ===========================================================================
+# Aggregation + reporting.
+# ===========================================================================
+
+_METRICS = [
+    ("throughput_tps", "tput"),
+    ("ttft_p50", "ttftP50"),
+    ("ttft_p99", "ttftP99"),
+    ("tpot_p50", "tpotP50"),
+    ("tpot_p99", "tpotP99"),
+    ("slo_rate", "SLO%"),
+]
+
+
+def _mean_std(vals: list) -> tuple:
     if not vals:
         return 0.0, 0.0
     return statistics.fmean(vals), (statistics.stdev(vals) if len(vals) > 1 else 0.0)
 
 
-_METRICS = [
-    ("throughput_tok_s", "tok/s"),
-    ("ttft_p50_ms", "ttftP50"),
-    ("ttft_p99_ms", "ttftP99"),
-    ("tpot_p50_ms", "tpotP50"),
-    ("tpot_p99_ms", "tpotP99"),
-]
+def _save_raw(config: str, seed: int, run: dict) -> None:
+    os.makedirs(RAW_DIR, exist_ok=True)
+    payload = {
+        "config": config, "seed": seed,
+        "requests": run["requests"],
+        "throughput_tps": run["throughput_tps"],
+        "ttft_p50": run["ttft_p50"], "ttft_p99": run["ttft_p99"],
+        "tpot_p50": run["tpot_p50"], "tpot_p99": run["tpot_p99"],
+        "slo_rate": run["slo_rate"],
+    }
+    path = os.path.join(RAW_DIR, f"{config}_run_{seed:03d}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
 
 
-def run_ablation_live(n: int = 50, runs: int = 3, seed0: int = 0) -> dict:
+def _save_adaptation_trace(decisions: list) -> None:
+    """Compact CARL-Full trace: log only first decision + each arm change."""
+    os.makedirs(RAW_DIR, exist_ok=True)
+    trace, prev_arm = [], None
+    for i, d in enumerate(decisions):
+        changed = (prev_arm is None) or (d["arm"] != prev_arm)
+        if changed:
+            c = d["config"]
+            trace.append({
+                "request_id": i, "regime": d["regime"].value,
+                "selected_arm": d["arm"], "reward": d["reward"],
+                "arm_changed": prev_arm is not None,
+                "config": {"batch_size": c.max_batch_size, "spec_k": c.spec_k,
+                           "routing_threshold": c.routing_threshold,
+                           "eviction_threshold": c.eviction_threshold,
+                           "chunk_size": c.chunk_size},
+            })
+        prev_arm = d["arm"]
+    with open(TRACE_PATH, "w", encoding="utf-8") as f:
+        json.dump(trace, f, indent=2)
+
+
+def run_all(seeds: list, n: int) -> dict:
+    env = capture_environment()
     dtype = torch.float16 if DEVICE.type == "cuda" else torch.float32
-    print(f"Device: {DEVICE} | dtype: {dtype} | {runs} runs x {n} requests", flush=True)
+    print(f"Device: {DEVICE} | dtype: {dtype} | {len(seeds)} runs x {n} requests "
+          f"| seeds {seeds}", flush=True)
     if DEVICE.type != "cuda":
-        print("WARNING: no CUDA device -- running on CPU. Numbers are a smoke test "
-              "only; run on a Colab T4 GPU for representative results.\n", flush=True)
+        print("WARNING: no CUDA device -- CPU smoke test only; run on a Colab T4.\n",
+              flush=True)
 
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model, _ = load_tinyllama_from_hf(MODEL_NAME, dtype=dtype)
     model.eval()
 
-    static_best_cfg, static_best_name = _resolve_static_best(model, tokenizer, n, seed0)
+    # Validation phase -> Static-Best. Validation uses ~half the eval size.
+    static_cfg, selection = select_static_best(model, tokenizer, max(10, n // 2))
 
     results: dict = {
-        "device": str(DEVICE), "dtype": str(dtype), "model": MODEL_NAME,
-        "scenario": "NON-STATIONARY (25 INTERACTIVE -> 25 BATCH)",
-        "runs": runs, "requests": n, "seeds": list(range(seed0, seed0 + runs)),
-        "slo_ttft_ms": _SLO.ttft_ms, "static_best": static_best_name,
+        "environment": env,
+        "scenario": "NON-STATIONARY (1-25 INTERACTIVE prompt16-64/max32, "
+                    "26-50 BATCH prompt128-256/max64)",
+        "seeds": seeds, "runs": len(seeds), "requests": n,
+        "slo_ttft_ms": SLO_TTFT_MS, "validation_seed": VALIDATION_SEED,
+        "static_best_selection": selection,
         "live_effective_configs": sorted(_LIVE_EFFECTIVE),
-        "note": ("Single-model live harness wires CARL to the SCHEDULER only, "
-                 "speculation is pinned off, there is no router, and KV eviction "
-                 "does not trigger at these sizes. So only NoSched/NoChunk (and "
-                 "Static-Best/Oracle) differ from CARL-Full; NoSpec/NoCache/"
-                 "NoRouter are expected to match CARL-Full. See docs/eval/README.md."),
+        "scope_note": ("Single-model live harness: CARL wired to the scheduler "
+                       "only, speculation pinned off, no router, KV eviction "
+                       "inactive. Only NoSched/NoChunk differ from CARL-Full; "
+                       "NoSpec/NoCache/NoRouter measure ~= CARL-Full by design. "
+                       "See docs/eval/README.md."),
         "configs": {},
     }
 
+    carl_full_decisions: list = []
+    carl_full_decision_us: list = []
+    carl_full_overhead_pct: list = []
+    oracle_arms = oracle_meta = None
+
     for name in CONFIGS:
+        if name == "DynOracle":
+            # Computed only now, from all CARL-Full decisions gathered above.
+            oracle_arms, oracle_meta = compute_dynoracle_arms(carl_full_decisions)
+
         per_run = []
-        for r in range(runs):
-            seed = seed0 + r
+        for r_idx, seed in enumerate(seeds):
             try:
-                cfg = static_best_cfg if name == "Static-Best" else None
-                m = run_config(name, model, tokenizer, n, seed, static_cfg=cfg)
-                per_run.append(m)
-                print(f"  {name:<14} run {r+1}/{runs}: "
-                      f"{m['throughput_tok_s']:6.1f} tok/s, "
-                      f"ttftP99={m['ttft_p99_ms']:6.1f}ms", flush=True)
+                run = run_config(
+                    name, model, tokenizer, n, seed,
+                    static_cfg=static_cfg if name == "Static-Best" else None,
+                    oracle_arms=oracle_arms if name == "DynOracle" else None)
+                per_run.append(run)
+                _save_raw(name, seed, run)
+                if name == "CARL-Full":
+                    carl_full_decisions.extend(run.get("decisions", []))
+                    carl_full_decision_us.extend(run.get("decision_us", []))
+                    carl_full_overhead_pct.append(run.get("overhead_pct", 0.0))
+                    if r_idx == 0:   # adaptation trace from the first CARL-Full run
+                        _save_adaptation_trace(run.get("decisions", []))
+                print(f"  {name:<14} {r_idx+1}/{len(seeds)} (seed {seed}): "
+                      f"{run['throughput_tps']:6.1f} tok/s, "
+                      f"ttftP99={run['ttft_p99']:6.1f}ms", flush=True)
             except Exception:
-                # Never fail silently (matches the live.py hardening): print the
-                # traceback and keep going so other configs still produce a table.
-                print(f"  {name:<14} run {r+1}/{runs}: FAILED", flush=True)
+                print(f"  {name:<14} {r_idx+1}/{len(seeds)} (seed {seed}): FAILED",
+                      flush=True)
                 traceback.print_exc()
         if not per_run:
             continue
-        agg = {}
+
+        agg = {"live_effective": name in _LIVE_EFFECTIVE}
         for key, _label in _METRICS:
             mean, std = _mean_std([m[key] for m in per_run])
             agg[f"{key}_mean"], agg[f"{key}_std"] = mean, std
         results["configs"][name] = agg
 
-    _print(results)
-    os.makedirs(DOCS_EVAL, exist_ok=True)
-    with open(RESULTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
-    print(f"\nSaved live ablation results to {RESULTS_PATH}", flush=True)
+    # CARL overhead (CARL-Full): P99 decision latency (us) + % of inference time.
+    if carl_full_decision_us:
+        results["carl_overhead"] = {
+            "p99_decision_latency_us": _percentile(carl_full_decision_us, 99),
+            "mean_pct_of_inference": _mean_std(carl_full_overhead_pct)[0],
+            "n_decisions": len(carl_full_decision_us),
+        }
+
+    if oracle_meta is not None:
+        results["dynoracle"] = {
+            "label": "DynOracle (retrospective offline UB -- not deployable)",
+            "definition": ("Best CARL arm per regime by mean recorded reward "
+                           "across all CARL-Full runs, applied statically with a "
+                           "boundary switch. Uses hindsight from completed runs."),
+            "arms_per_regime": oracle_meta,
+            "source": "CARL-Full recorded rewards", "seeds": seeds,
+        }
+
+    _finalize(results)
     return results
 
 
+def _finalize(results: dict) -> None:
+    cfgs = results["configs"]
+
+    # Subsystem contributions: delta_X = CARL-Full - CARL-NoX (throughput), ranked.
+    full = cfgs.get("CARL-Full", {}).get("throughput_tps_mean", 0.0)
+    contrib = {}
+    for name in ("CARL-NoSched", "CARL-NoSpec", "CARL-NoCache",
+                 "CARL-NoRouter", "CARL-NoChunk"):
+        if name in cfgs:
+            contrib[name.replace("CARL-No", "")] = full - cfgs[name]["throughput_tps_mean"]
+    results["subsystem_contributions"] = dict(
+        sorted(contrib.items(), key=lambda kv: kv[1], reverse=True))
+
+    # Oracle gap: (DynOracle - CARL-Full) / DynOracle * 100.
+    dyn = cfgs.get("DynOracle", {}).get("throughput_tps_mean", 0.0)
+    results["oracle_gap_pct"] = ((dyn - full) / dyn * 100.0) if dyn else None
+
+    # LinUCB vs Thompson.
+    th = cfgs.get("CARL-Thompson", {}).get("throughput_tps_mean", 0.0)
+    results["linucb_vs_thompson"] = {
+        "carl_full_linucb_tput": full, "carl_thompson_tput": th,
+        "linucb_minus_thompson": full - th,
+    }
+
+    os.makedirs(DOCS_EVAL, exist_ok=True)
+    with open(RESULTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+    _print(results)
+    print(f"\nSaved live ablation results to {RESULTS_PATH}", flush=True)
+
+
 def _print(results: dict) -> None:
-    headers = ["config", "live?"] + [label for _k, label in _METRICS]
+    cfgs = results["configs"]
     print("\n=== LIVE ABLATION: NON-STATIONARY on real TinyLlama (mean +/- std) ===")
+    headers = ["config", "live?", "tput", "ttftP99", "SLO%"]
     print("| " + " | ".join(headers) + " |")
     print("| " + " | ".join("---" for _ in headers) + " |")
     for name in CONFIGS:
-        agg = results["configs"].get(name)
-        if agg is None:
+        a = cfgs.get(name)
+        if a is None:
             continue
-        live = "yes" if name in _LIVE_EFFECTIVE else "no*"
-        cells = [name, live]
-        for key, _label in _METRICS:
-            cells.append(f"{agg[f'{key}_mean']:.1f} +/- {agg[f'{key}_std']:.1f}")
-        print("| " + " | ".join(cells) + " |")
-    print("\n* 'no' = config has no live effect in this single-model harness "
-          "(spec pinned off / no router / eviction inactive); expected to match "
-          "CARL-Full. See the module docstring and docs/eval/README.md.")
+        live = "yes" if a.get("live_effective") else "no*"
+        print("| " + " | ".join([
+            name, live,
+            f"{a['throughput_tps_mean']:.1f} +/- {a['throughput_tps_std']:.1f}",
+            f"{a['ttft_p99_mean']:.1f} +/- {a['ttft_p99_std']:.1f}",
+            f"{a['slo_rate_mean']:.0f}",
+        ]) + " |")
+    print("\n* 'no' = frozen knob has no live effect in this single-model harness "
+          "(spec off / no router / eviction inactive); expected ~= CARL-Full.")
+
+    print("\n=== Subsystem contributions (delta tput = CARL-Full - CARL-NoX, ranked) ===")
+    for sub, d in results.get("subsystem_contributions", {}).items():
+        print(f"  {sub:<8} {d:+.2f} tok/s")
+    if results.get("oracle_gap_pct") is not None:
+        print(f"\nOracle gap (DynOracle vs CARL-Full): {results['oracle_gap_pct']:+.1f}%")
+    lt = results.get("linucb_vs_thompson", {})
+    if lt:
+        print(f"LinUCB vs Thompson: {lt['carl_full_linucb_tput']:.1f} vs "
+              f"{lt['carl_thompson_tput']:.1f} tok/s "
+              f"({lt['linucb_minus_thompson']:+.1f})")
+    ov = results.get("carl_overhead")
+    if ov:
+        print(f"CARL overhead: P99 decision latency {ov['p99_decision_latency_us']:.1f} us "
+              f"over {ov['n_decisions']} decisions")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="CARL ablation on real TinyLlama inference (GPU).")
-    parser.add_argument("--runs", type=int, default=3, help="runs per config")
+    parser.add_argument("--seeds", default=",".join(map(str, DEFAULT_SEEDS)),
+                        help="comma-separated run seeds (default 42..51)")
     parser.add_argument("--limit", type=int, default=50, help="requests per run")
-    parser.add_argument("--seed", type=int, default=0, help="first seed")
     args = parser.parse_args()
-    # Guard against an accidental huge real-inference run from a stray --limit.
+    seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     n = args.limit if 0 < args.limit <= 200 else 50
-    run_ablation_live(n=n, runs=args.runs, seed0=args.seed)
+    run_all(seeds, n)
 
 
 if __name__ == "__main__":

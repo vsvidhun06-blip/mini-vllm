@@ -245,6 +245,27 @@ def flash_attention_forward(
     Returns:
         (B, NH, S_q, D) attention output, same dtype/device as ``q``.
     """
+    # --- fp32 everywhere (do this FIRST, before any shape/stride reads) -----
+    # The model serves in fp16 on GPU, so q/k/v arrive fp16. Triton's tl.dot
+    # returns its result in the INPUT operands' dtype: with fp16 q/k the scores
+    # dot comes back fp16, so the softmax weights p are fp16 -- but the value
+    # matmul then mixes that fp16 p with v, and any per-operand cast leaves the
+    # operands mismatched. That is exactly the "Both operands must be same dtype.
+    # Got fp32 and fp16" crash. Rather than thread casts through every op, run
+    # the WHOLE kernel in fp32: promote every input (incl. the additive mask)
+    # here, compute, then cast the output back to the caller's dtype at the end.
+    # The guard keeps the genuine-fp32 path allocation-free. Strides are read
+    # AFTER this so the kernel always sees the fp32 tensors' layout. (This also
+    # matches the engine's true-fp32 parity contract: the kernel disables TF32,
+    # so promoting fp16->fp32 leaves the numerics identical to the fp32 path.)
+    orig_dtype = q.dtype
+    if q.dtype != torch.float32:
+        q = q.to(torch.float32)
+        k = k.to(torch.float32)
+        v = v.to(torch.float32)
+        if attn_mask is not None:
+            attn_mask = attn_mask.to(torch.float32)
+
     assert q.dim() == 4 and k.dim() == 4 and v.dim() == 4, "expected (B, NH, S, D)"
     B, NH, S_q, D = q.shape
     Bk, NHk, S_k, Dk = k.shape
@@ -255,24 +276,6 @@ def flash_attention_forward(
     assert not (causal and attn_mask is not None), (
         "pass either causal=True or an explicit attn_mask, not both"
     )
-
-    # --- fp32 everywhere ----------------------------------------------------
-    # The model runs fp16 on GPU, so q/k/v arrive fp16. Triton's tl.dot returns
-    # its result in the INPUT operands' dtype: with fp16 q/k the scores dot comes
-    # back fp16, so the softmax weights p are fp16 -- but the value matmul mixes
-    # that fp16 p with v, and any cast on one side (the old v.to(fp32)) leaves the
-    # operands mismatched, which is exactly the "Both operands must be same dtype.
-    # Got fp32 and fp16" crash. Rather than thread casts through every op, run the
-    # WHOLE kernel in fp32: cast q/k/v (and the additive mask) up here, compute,
-    # then cast the output back to the caller's dtype below. This also matches the
-    # engine's true-fp32 parity contract (the kernel already disables TF32), so
-    # the numerics are unchanged from the fp32 path.
-    orig_dtype = q.dtype
-    q = q.float()
-    k = k.float()
-    v = v.float()
-    if attn_mask is not None:
-        attn_mask = attn_mask.float()
 
     out = torch.empty_like(q)          # fp32 (q is now fp32)
     scale = 1.0 / (D ** 0.5)
