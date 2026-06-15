@@ -251,6 +251,8 @@ def make_agent(name: str, slo: SLO, *,
     static_best_cfg must be supplied for "Static-Best" (resolve it once per
     scenario with best_static_config); thompson_seed seeds "carl_thompson".
     """
+    # Accept lowercase aliases so scripts can use the spec's method labels.
+    name = {"oracle": "Oracle", "autotuner": "AutoTuner"}.get(name, name)
     if name == "CARL-Full":
         return bc.CarlAgent(LinUCBBandit, "CARL-Full", slo, alpha=0.5)
     if name in _ABLATION_FREEZE:
