@@ -532,6 +532,7 @@ def run_all(seeds: list, n: int) -> dict:
 
     carl_full_decisions: list = []
     carl_full_decision_us: list = []
+    carl_full_decision_us_per_run: list = []   # one list per CARL-Full seed
     carl_full_overhead_pct: list = []
     oracle_arms = oracle_meta = None
 
@@ -552,6 +553,7 @@ def run_all(seeds: list, n: int) -> dict:
                 if name == "CARL-Full":
                     carl_full_decisions.extend(run.get("decisions", []))
                     carl_full_decision_us.extend(run.get("decision_us", []))
+                    carl_full_decision_us_per_run.append(list(run.get("decision_us", [])))
                     carl_full_overhead_pct.append(run.get("overhead_pct", 0.0))
                     if r_idx == 0:   # adaptation trace from the first CARL-Full run
                         _save_adaptation_trace(run.get("decisions", []))
@@ -572,11 +574,36 @@ def run_all(seeds: list, n: int) -> dict:
         results["configs"][name] = agg
 
     # CARL overhead (CARL-Full): P99 decision latency (us) + % of inference time.
+    #
+    # IMPORTANT (see docs/eval/overhead_reconciliation.md): n_decisions here is
+    # SMALL -- it is one timing per actual control cycle (every observe_interval
+    # scheduler steps), summed across the CARL-Full seeds, so for a 30-request run
+    # it is only ~tens of samples. P99 over so few samples is just the single
+    # slowest decision, which is dominated by FIRST-CALL WARMUP (the cold numpy
+    # linalg path on the first cycle of the process). That makes the raw P99 swing
+    # wildly run-to-run and it should NOT be reported as a steady-state tail.
+    # We therefore record BOTH the raw P99 and a warmup-excluded P99 (dropping the
+    # first decision of each run), keep the cold-start figure separately, and
+    # persist the full per-run decision_us so the distribution can be re-analysed.
     if carl_full_decision_us:
+        # Per-run lists (first element of each is that run's cold-start decision).
+        cold_starts = [d[0] for d in carl_full_decision_us_per_run if d]
+        steady = [v for d in carl_full_decision_us_per_run for v in d[1:]]
         results["carl_overhead"] = {
             "p99_decision_latency_us": _percentile(carl_full_decision_us, 99),
+            "p99_decision_latency_us_warmup_excluded": _percentile(steady, 99),
+            "p50_decision_latency_us_warmup_excluded": _percentile(steady, 50),
+            "cold_start_us_per_run": cold_starts,
+            "cold_start_p99_us": _percentile(cold_starts, 99),
             "mean_pct_of_inference": _mean_std(carl_full_overhead_pct)[0],
             "n_decisions": len(carl_full_decision_us),
+            "n_decisions_per_run": [len(d) for d in carl_full_decision_us_per_run],
+            "n_decisions_warmup_excluded": len(steady),
+            "decision_us_per_run": carl_full_decision_us_per_run,
+            "note": ("p99_decision_latency_us is small-N (==max sample) and "
+                     "warmup-dominated; report the warmup_excluded steady-state "
+                     "figure as the headline and cold_start separately. See "
+                     "docs/eval/overhead_reconciliation.md."),
         }
 
     if oracle_meta is not None:
@@ -656,8 +683,15 @@ def _print(results: dict) -> None:
               f"({lt['linucb_minus_thompson']:+.1f})")
     ov = results.get("carl_overhead")
     if ov:
-        print(f"CARL overhead: P99 decision latency {ov['p99_decision_latency_us']:.1f} us "
-              f"over {ov['n_decisions']} decisions")
+        print(f"CARL overhead: raw P99 {ov['p99_decision_latency_us']:.1f} us "
+              f"(small-N==max, warmup-dominated) over {ov['n_decisions']} decisions "
+              f"{ov.get('n_decisions_per_run')}")
+        if "p99_decision_latency_us_warmup_excluded" in ov:
+            print(f"  steady-state (warmup-excluded): P50 "
+                  f"{ov['p50_decision_latency_us_warmup_excluded']:.1f} us / P99 "
+                  f"{ov['p99_decision_latency_us_warmup_excluded']:.1f} us "
+                  f"over {ov['n_decisions_warmup_excluded']} decisions; "
+                  f"cold-start/run: {[round(c,1) for c in ov.get('cold_start_us_per_run',[])]} us")
 
 
 def main() -> None:
