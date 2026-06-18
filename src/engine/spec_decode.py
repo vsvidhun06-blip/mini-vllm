@@ -376,6 +376,17 @@ def rewind_cache(
         # `_reserved[request_id] -= 1`.
         pool._reserved[request_id] += 1  # noqa: SLF001
 
+    # The per-request cached block-table device tensor (`_bt_tensor`, added in
+    # 9a5a4c9 for CUDA-graph capture) keys its validity ONLY on len(block_table)
+    # and assumes the table grows monotonically with tail entries never moving.
+    # The block-free loop above violates that: we pop tail blocks and return
+    # them to the pool's free set, so the next allocate_block can hand the same
+    # logical tail slot a DIFFERENT physical block at the SAME length -- a stale
+    # `_bt_tensor` would then gather K/V from the wrong block and silently
+    # corrupt decode. Drop it so the next get() rebuilds, exactly mirroring the
+    # H2O-eviction path (kv_eviction.py, after trim_request_blocks).
+    request_cache._bt_tensor = None  # noqa: SLF001
+
 
 # ---------------------------------------------------------------------------
 # spec_decode_step (the orchestrator)
@@ -490,6 +501,11 @@ def spec_decode_step(
     # the seq_len reset without the block-free pass.
     for layer_idx in range(len(request_cache._seq_lens)):  # noqa: SLF001
         request_cache._seq_lens[layer_idx] = pre_seq_len  # noqa: SLF001
+    # The draft loop above may have grown the block table (and rebuilt the
+    # cached `_bt_tensor`) at a seq_len we've now rewound past. Drop the cached
+    # tensor so verify's full forward rebuilds it against the true post-rewind
+    # block table -- same rationale as rewind_cache / the eviction path.
+    request_cache._bt_tensor = None  # noqa: SLF001
 
     # --- 4. Verify: full forward on [last_token, d_0, ..., d_{K-1}] ---
     # Writes fresh K/V at all 22 layers for the K+1 new positions.
