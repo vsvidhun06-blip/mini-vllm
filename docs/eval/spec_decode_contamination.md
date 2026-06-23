@@ -83,3 +83,20 @@ likely not cached (download/availability blocker).
 Regenerate on GPU (e.g. Colab) with the original seeds (42/43/44) and unchanged
 scenario definitions, then compare `spec_k > 0` rows against this record's
 notes (winner, margin_pct, throughput, TTFT, SLO rate, acceptance).
+
+## Post-fix regeneration status (commit `2e11321`)
+
+A post-fix GPU regeneration was run on Colab, but the VM disconnected before the
+detailed JSON artifacts could be downloaded; only a PDF artifact of the run
+output was preserved. Current state of the three committed files:
+
+- `failure_cases_results.json` — **reconstructed** from the verified Colab GPU
+  PDF artifact after the VM disconnected before download. Values are real GPU
+  measurements from `2e11321`; metrics absent from the PDF (TTFT p50, SLO-rate
+  std, `static_best_config`) are left `null` and were not inferred or
+  backfilled. See its `regeneration_metadata` block.
+- `ablation_live_results.json` and `cross_model_results.json` — **schema-compliant
+  placeholders** (`status: "PLACEHOLDER"`, `rerun_required: true`) pending a
+  future GPU rerun, because the detailed regenerated outputs for these two were
+  not recoverable from the captured artifact. Rerun `scripts/eval/ablation_live.py`
+  and `scripts/eval/cross_model.py` on GPU at `2e11321` to populate them.

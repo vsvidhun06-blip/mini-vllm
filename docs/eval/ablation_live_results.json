@@ -1,0 +1,18 @@
+{
+  "regeneration_metadata": {
+    "commit": "2e11321",
+    "spec_decode_fix": true,
+    "regenerated_after_fix": true,
+    "original_contaminated_commit": "f23d6ff",
+    "regression_commit": "9a5a4c9",
+    "device": "cuda",
+    "dtype": "torch.float16",
+    "status": "PLACEHOLDER",
+    "rerun_required": true,
+    "generation_note": "Schema-compliant placeholder. Post-fix GPU values for this artifact were NOT captured: the Colab VM disconnected before its JSON was downloaded, and only failure_cases numbers were preserved (PDF artifact). Regenerate on GPU via `python scripts/eval/ablation_live.py` at commit 2e11321 to populate `configs` and `subsystem_contributions`."
+  },
+  "scenario": "NON-STATIONARY",
+  "slo_ttft_ms": 200.0,
+  "configs": {},
+  "subsystem_contributions": {}
+}

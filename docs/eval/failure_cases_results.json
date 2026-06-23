@@ -1,0 +1,158 @@
+{
+  "regeneration_metadata": {
+    "commit": "2e11321",
+    "spec_decode_fix": true,
+    "regenerated_after_fix": true,
+    "original_contaminated_commit": "f23d6ff",
+    "regression_commit": "9a5a4c9",
+    "device": "cuda",
+    "dtype": "torch.float16",
+    "generation_note": "Reconstructed from verified Colab GPU run output (PDF artifact). Colab VM disconnected before JSON download. Numbers are real GPU measurements from commit 2e11321."
+  },
+  "seeds": [42, 43, 44],
+  "requests_per_run": 30,
+  "methods": ["CARL-Full", "Static-Best"],
+  "slo_ttft_ms": 200.0,
+  "win_margin_pct": 2.0,
+  "environment": {
+    "gpu": null,
+    "device": "cuda",
+    "dtype": "torch.float16",
+    "captured": false,
+    "note": "Full environment.json (gpu name, torch/cuda/python versions) not captured; Colab VM disconnected before artifact download."
+  },
+  "scenarios": [
+    {
+      "scenario": "ultra_short",
+      "static_best_config": null,
+      "carl": {
+        "throughput_tps_mean": 78.0, "throughput_tps_std": 1.0,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 2027.0, "ttft_p99_std": 11.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "static": {
+        "throughput_tps_mean": 78.6, "throughput_tps_std": 0.8,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 2172.0, "ttft_p99_std": 44.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "winner": "Tie",
+      "margin_pct": -0.9,
+      "arm_changes": 0,
+      "unique_arms": 1,
+      "failure_reason_hypothesis": "exploration_overhead",
+      "failure_reason_final": "no_adaptation_triggered",
+      "hypothesis_revised": true,
+      "latency_tradeoff": "n/a (CARL wins or ties on throughput)"
+    },
+    {
+      "scenario": "stable_load",
+      "static_best_config": null,
+      "carl": {
+        "throughput_tps_mean": 94.5, "throughput_tps_std": 1.0,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 2272.0, "ttft_p99_std": 30.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "static": {
+        "throughput_tps_mean": 92.7, "throughput_tps_std": 1.9,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 6112.0, "ttft_p99_std": 189.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "winner": "Tie",
+      "margin_pct": 1.9,
+      "arm_changes": 1,
+      "unique_arms": 2,
+      "failure_reason_hypothesis": "no_regime_change",
+      "failure_reason_final": "no_failure",
+      "hypothesis_revised": true,
+      "latency_tradeoff": "n/a (CARL wins or ties on throughput)"
+    },
+    {
+      "scenario": "single_queue",
+      "static_best_config": null,
+      "carl": {
+        "throughput_tps_mean": 29.2, "throughput_tps_std": 0.1,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 75.0, "ttft_p99_std": 3.0,
+        "slo_rate_mean": 100.0, "slo_rate_std": null
+      },
+      "static": {
+        "throughput_tps_mean": 30.9, "throughput_tps_std": 0.3,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 76.0, "ttft_p99_std": 5.0,
+        "slo_rate_mean": 100.0, "slo_rate_std": null
+      },
+      "winner": "Static",
+      "margin_pct": -5.4,
+      "arm_changes": 0,
+      "unique_arms": 1,
+      "failure_reason_hypothesis": "insufficient_adaptation_time",
+      "failure_reason_final": "no_adaptation_triggered",
+      "hypothesis_revised": true,
+      "latency_tradeoff": "CARL loses throughput with no offsetting TTFT/SLO benefit here"
+    },
+    {
+      "scenario": "rapid_oscillation",
+      "static_best_config": null,
+      "carl": {
+        "throughput_tps_mean": 53.0, "throughput_tps_std": 7.8,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 4791.0, "ttft_p99_std": 881.0,
+        "slo_rate_mean": 16.0, "slo_rate_std": null
+      },
+      "static": {
+        "throughput_tps_mean": 69.9, "throughput_tps_std": 1.4,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 278.0, "ttft_p99_std": 5.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "winner": "Static",
+      "margin_pct": -24.2,
+      "arm_changes": 6,
+      "unique_arms": 4,
+      "failure_reason_hypothesis": "insufficient_adaptation_time",
+      "failure_reason_final": "exploration_overhead",
+      "hypothesis_revised": true,
+      "latency_tradeoff": "CARL trades 24.2% throughput for a +4513.0 ms TTFT-P99 / +16.0 pt SLO change"
+    },
+    {
+      "scenario": "memory_pressure",
+      "static_best_config": null,
+      "carl": {
+        "throughput_tps_mean": 72.6, "throughput_tps_std": 0.8,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 43232.0, "ttft_p99_std": 1019.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "static": {
+        "throughput_tps_mean": 86.1, "throughput_tps_std": 1.8,
+        "ttft_p50_mean": null, "ttft_p50_std": null,
+        "ttft_p99_mean": 24472.0, "ttft_p99_std": 1347.0,
+        "slo_rate_mean": 0.0, "slo_rate_std": null
+      },
+      "winner": "Static",
+      "margin_pct": -15.7,
+      "arm_changes": 23,
+      "unique_arms": 6,
+      "failure_reason_hypothesis": "memory_bound",
+      "failure_reason_final": "adaptation_instability",
+      "hypothesis_revised": true,
+      "latency_tradeoff": "CARL loses throughput with no offsetting TTFT/SLO benefit here"
+    }
+  ],
+  "summary": {
+    "carl_underperforms_or_ties": "5/5",
+    "hypotheses_confirmed": "0/5",
+    "failure_reasons": {
+      "ultra_short": "no_adaptation_triggered",
+      "stable_load": "no_failure",
+      "single_queue": "no_adaptation_triggered",
+      "rapid_oscillation": "exploration_overhead",
+      "memory_pressure": "adaptation_instability"
+    }
+  },
+  "paper_quote": "On real TinyLlama, CARL fails to beat a per-scenario-validated Static-Best in 5/5 stress workloads designed to expose its weaknesses, losing most on 'rapid_oscillation' (-24.2% throughput, exploration_overhead). CARL's advantage is specifically NON-stationary multi-regime traffic; on stable, sequential, or memory-bound workloads its online exploration is a cost, not a benefit -- exactly where a fixed config should be used."
+}
