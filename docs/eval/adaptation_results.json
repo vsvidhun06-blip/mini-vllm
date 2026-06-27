@@ -1,0 +1,329 @@
+{
+  "scenario": "NON-STATIONARY",
+  "method": "CARL-Full",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "requests_per_run": 50,
+  "observe_interval": 10,
+  "environment": {
+    "gpu": "Tesla T4",
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128",
+    "python": "3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]",
+    "timestamp": "2026-06-27T12:53:56.665025"
+  },
+  "regret_model": "static best-arm-per-regime oracle (DynOracle mean reward); instant_regret = max(0, oracle - reward)",
+  "oracle_reward_by_regime": {
+    "interactive": 0.6333333333333333,
+    "batch": 0.5499999999999999
+  },
+  "oracle_arms_per_regime": {
+    "interactive": {
+      "best_arm": 0,
+      "mean_reward": 0.6333333333333333,
+      "config": {
+        "max_batch_size": 4,
+        "chunk_size": 128,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.6,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      "per_arm_mean_reward": {
+        "0": 0.6333333333333333,
+        "1": 0.3,
+        "2": 0.3,
+        "3": 0.3
+      }
+    },
+    "batch": {
+      "best_arm": 0,
+      "mean_reward": 0.5499999999999999,
+      "config": {
+        "max_batch_size": 32,
+        "chunk_size": 512,
+        "preemption_enabled": false,
+        "spec_k": 4,
+        "routing_threshold": 0.6,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 16,
+        "use_cuda_graphs": true
+      },
+      "per_arm_mean_reward": {
+        "0": 0.5499999999999999
+      }
+    }
+  },
+  "per_seed_summary": {
+    "42": {
+      "n_decisions": 11,
+      "convergence_point": {
+        "cycle": 9,
+        "step": 90,
+        "converged_within_window": true
+      },
+      "total_cumulative_regret": 2.583333333333333,
+      "per_regime_cumulative_regret": {
+        "batch": 0.24999999999999994,
+        "interactive": 2.333333333333333
+      },
+      "arm_switch_count": 5,
+      "unique_arm_count": 5,
+      "time_to_first_adaptation": {
+        "interactive": 6,
+        "batch": null
+      },
+      "final_arm_per_regime": {
+        "batch": 0,
+        "interactive": 3
+      },
+      "events": {
+        "regime_transitions": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "from_regime": "interactive",
+            "to_regime": "batch"
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          }
+        ],
+        "arm_switches": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "regime": "batch",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 1
+          },
+          {
+            "cycle": 7,
+            "step": 70,
+            "regime": "interactive",
+            "from_arm": 1,
+            "to_arm": 2
+          },
+          {
+            "cycle": 9,
+            "step": 90,
+            "regime": "interactive",
+            "from_arm": 2,
+            "to_arm": 3
+          }
+        ],
+        "convergence_point": {
+          "cycle": 9,
+          "step": 90,
+          "converged_within_window": true
+        }
+      }
+    },
+    "43": {
+      "n_decisions": 11,
+      "convergence_point": {
+        "cycle": 9,
+        "step": 90,
+        "converged_within_window": true
+      },
+      "total_cumulative_regret": 2.583333333333333,
+      "per_regime_cumulative_regret": {
+        "batch": 0.24999999999999994,
+        "interactive": 2.333333333333333
+      },
+      "arm_switch_count": 5,
+      "unique_arm_count": 5,
+      "time_to_first_adaptation": {
+        "interactive": 6,
+        "batch": null
+      },
+      "final_arm_per_regime": {
+        "batch": 0,
+        "interactive": 3
+      },
+      "events": {
+        "regime_transitions": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "from_regime": "interactive",
+            "to_regime": "batch"
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          }
+        ],
+        "arm_switches": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "regime": "batch",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 1
+          },
+          {
+            "cycle": 7,
+            "step": 70,
+            "regime": "interactive",
+            "from_arm": 1,
+            "to_arm": 2
+          },
+          {
+            "cycle": 9,
+            "step": 90,
+            "regime": "interactive",
+            "from_arm": 2,
+            "to_arm": 3
+          }
+        ],
+        "convergence_point": {
+          "cycle": 9,
+          "step": 90,
+          "converged_within_window": true
+        }
+      }
+    },
+    "44": {
+      "n_decisions": 11,
+      "convergence_point": {
+        "cycle": 9,
+        "step": 90,
+        "converged_within_window": true
+      },
+      "total_cumulative_regret": 2.583333333333333,
+      "per_regime_cumulative_regret": {
+        "batch": 0.24999999999999994,
+        "interactive": 2.333333333333333
+      },
+      "arm_switch_count": 5,
+      "unique_arm_count": 5,
+      "time_to_first_adaptation": {
+        "interactive": 6,
+        "batch": null
+      },
+      "final_arm_per_regime": {
+        "batch": 0,
+        "interactive": 3
+      },
+      "events": {
+        "regime_transitions": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "from_regime": "interactive",
+            "to_regime": "batch"
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "from_regime": "batch",
+            "to_regime": "interactive"
+          }
+        ],
+        "arm_switches": [
+          {
+            "cycle": 1,
+            "step": 10,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 4,
+            "step": 40,
+            "regime": "batch",
+            "from_arm": 0,
+            "to_arm": 0
+          },
+          {
+            "cycle": 5,
+            "step": 50,
+            "regime": "interactive",
+            "from_arm": 0,
+            "to_arm": 1
+          },
+          {
+            "cycle": 7,
+            "step": 70,
+            "regime": "interactive",
+            "from_arm": 1,
+            "to_arm": 2
+          },
+          {
+            "cycle": 9,
+            "step": 90,
+            "regime": "interactive",
+            "from_arm": 2,
+            "to_arm": 3
+          }
+        ],
+        "convergence_point": {
+          "cycle": 9,
+          "step": 90,
+          "converged_within_window": true
+        }
+      }
+    }
+  },
+  "generated": "2026-06-27T12:55:37.372411",
+  "note": "Offline post-processing of CARL-Full's recorded controller log; the live serving pipeline is unmodified. Per-cycle data is in docs/eval/raw/adaptation/decisions_<seed>.csv."
+}
