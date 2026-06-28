@@ -885,19 +885,27 @@ def main() -> None:
                         help="comma-separated run seeds (default 42,43,44)")
     parser.add_argument("--limit", type=int, default=PHASE_REQUESTS,
                         help="requests per phase (default 50; total run = 2x this)")
-    parser.add_argument("--transitions", default="",
-                        help='optional subset, e.g. "INTERACTIVE->BATCH,BATCH->INTERACTIVE"')
+    # nargs="*" so transitions can be passed space-separated
+    # (--transitions "INTERACTIVE->BATCH" "BATCH->INTERACTIVE"); each token is
+    # also split on commas, so comma-separated (or a mix of both) still works.
+    parser.add_argument("--transitions", nargs="*", default=None,
+                        help='optional subset, space- and/or comma-separated, e.g. '
+                             '--transitions "INTERACTIVE->BATCH" "BATCH->INTERACTIVE" '
+                             'or --transitions "INTERACTIVE->BATCH,BATCH->INTERACTIVE"')
     args = parser.parse_args()
 
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     n_phase = args.limit if 0 < args.limit <= 200 else PHASE_REQUESTS
-    if args.transitions.strip():
+    if args.transitions:
         chosen = []
-        for tok in args.transitions.split(","):
-            tok = tok.strip()
-            if "->" in tok:
-                s, t = tok.split("->", 1)
-                chosen.append((s.strip(), t.strip()))
+        # Flatten the space-separated values, then split each on commas, so any
+        # combination of the two delimiters parses to the same list of pairs.
+        for raw in args.transitions:
+            for tok in raw.split(","):
+                tok = tok.strip()
+                if "->" in tok:
+                    s, t = tok.split("->", 1)
+                    chosen.append((s.strip(), t.strip()))
         transitions = chosen or TRANSITIONS
     else:
         transitions = TRANSITIONS
