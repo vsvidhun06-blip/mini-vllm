@@ -68,8 +68,14 @@ OUTPUTS
   docs/eval/distribution_shift_results.json
       aggregate schema mirroring the other docs/eval/*_results.json files.
   docs/eval/raw/distribution_shift/<SOURCE>_to_<TARGET>_seed<NNN>.csv
-      per-CARL-cycle rows: cycle, phase, throughput_tps, ttft_p99_ms,
-      arm_selected, cumulative_regret  -- the convergence-figure source.
+      per-CARL-cycle rows (convergence-figure + root-cause source):
+        cycle, phase, throughput_tps, ttft_p99_ms, arm_selected,
+        cumulative_regret, regime, reward, is_arm_switch, is_exploitative,
+        queue_depth, avg_prompt_len, gpu_utilization, cache_hit_rate
+      ttft_p99_ms is the rolling-window per-request TTFT p99 at that cycle; the
+      four raw features are denormalized from the logged context; is_exploitative
+      is reconstructed offline (greedy exploit-argmax == selected arm). CARL-Full
+      only -- Static-Best/AutoTuner have no per-cycle controller log.
 
 SCOPE / HONESTY (same single-model live caveats as ablation_live.py)
 --------------------------------------------------------------------
@@ -114,13 +120,18 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from src.carl.adaptation import decision_rows, summarize  # noqa: E402
 from src.carl.bandit import LinUCBBandit, PerRegimeBandit  # noqa: E402
 from src.carl.config import CARLConfig, all_arm_sets  # noqa: E402
 from src.carl.controller import SLO, CARLController  # noqa: E402
-from src.carl.state import FEATURE_DIM, MetricsTracker  # noqa: E402
+# _FEATURE_SCALES: the (name -> characteristic scale) map state.to_feature_vector
+# divides by; we multiply back to log RAW engine units (queue depth, prompt len,
+# GPU util, cache hit rate) for the per-cycle CSV. Read-only use -- nothing here
+# changes how features are computed.
+from src.carl.state import FEATURE_DIM, MetricsTracker, _FEATURE_SCALES  # noqa: E402
 from src.engine.auto_tuner import AutoTuner, TuningConfig  # noqa: E402
 from src.engine.device import DEVICE  # noqa: E402
 from src.engine.model import MODEL_NAME, load_tinyllama_from_hf  # noqa: E402
@@ -624,23 +635,111 @@ def _csv_path(source: str, target: str, seed: int) -> str:
     return os.path.join(RAW_DIR, f"{source}_to_{target}_seed{seed:03d}.csv")
 
 
-def _write_cycle_csv(path: str, rows: list, cycle_metrics: list, shift_step) -> None:
-    """Per-CARL-cycle convergence CSV: cycle, phase, throughput_tps, ttft_p99_ms,
-    arm_selected, cumulative_regret.
+# Feature order (the index of each name in a logged state_features vector).
+_FEAT_IDX = {name: i for i, name in enumerate(_FEATURE_SCALES.keys())}
 
-    `rows` (from decision_rows) and `cycle_metrics` are both one-per-control-cycle
-    and in the same order, so they align by index.
+
+def _raw_feature(state_features, name: str):
+    """Denormalize one logged context feature back to RAW engine units.
+
+    state.to_feature_vector() stores feature/scale; we multiply by the scale to
+    recover the raw value (queue_depth in requests, avg_prompt_len in tokens,
+    gpu_utilization/cache_hit_rate as fractions). Returns "" if the feature is
+    absent (e.g. an override cycle logged no context).
+    """
+    i = _FEAT_IDX.get(name)
+    if i is None or not state_features or i >= len(state_features):
+        return ""
+    return state_features[i] * _FEATURE_SCALES[name]
+
+
+def _reconstruct_exploitative(log: list, arms_view) -> list:
+    """Per-cycle is_exploitative for a CARL run, reconstructed offline.
+
+    LOGGING-ONLY post-hoc analysis -- it does NOT touch the controller, the
+    reward, or the live bandit. It replays the controller's recorded decisions
+    into a SHADOW PerRegimeBandit (identical class + arm sets; alpha is irrelevant
+    because only the exploit term theta^T x is read). Since the live bandit's ONLY
+    updates are the controller's delayed (prev_arm, reward, prev_context) folds
+    (see controller.py step 3), replaying them in order reproduces the EXACT A/b
+    the live bandit held at each selection -- so this is a faithful reconstruction,
+    not an approximation.
+
+      is_exploitative[t] = (argmax_a theta_a^T x_t == the arm actually selected)
+
+    True  -> the greedy (exploit-only) pick matched the live selection.
+    False -> the UCB exploration bonus changed the pick: an EXPLORATORY decision.
+    "" (blank) when the cycle can't be labelled (override arm or missing context).
+    """
+    shadow = PerRegimeBandit(all_arm_sets(), d=FEATURE_DIM,
+                             bandit_cls=LinUCBBandit, alpha=0.5)
+    flags = []
+    prev = None   # (regime, arm, context) of the previous cycle
+    for e in log:
+        regime = e.regime
+        arm = _arm_index(arms_view.arms(regime), e.config)
+        x = np.asarray(e.state_features, dtype=np.float64).reshape(-1)
+        bandit = shadow.bandits[regime]
+        # Label THIS cycle against the shadow's current statistics, which reflect
+        # exactly the updates the live bandit had applied before this selection.
+        if arm < 0 or x.size != bandit.d:
+            flags.append("")
+        else:
+            exploit = [float(bandit.theta(a) @ x) for a in range(bandit.n_arms)]
+            greedy = max(range(bandit.n_arms), key=lambda a: exploit[a])
+            flags.append(greedy == arm)
+        # Then mirror the controller's delayed update: credit the PREVIOUS arm
+        # with THIS cycle's reward and the previous context (affects cycle t+1).
+        if prev is not None:
+            pr, pa, pctx = prev
+            if pa >= 0 and pctx.size == shadow.bandits[pr].d:
+                shadow.update(pr, pa, e.reward, pctx)
+        prev = (regime, arm, x)
+    return flags
+
+
+def _fmt(v) -> str:
+    """4-decimal float, pass-through for blanks/bools/ints already stringified."""
+    return f"{v:.4f}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
+
+
+# Per-CARL-cycle CSV schema (the convergence-figure + root-cause source).
+_CYCLE_CSV_COLUMNS = [
+    "cycle", "phase", "throughput_tps", "ttft_p99_ms", "arm_selected",
+    "cumulative_regret", "regime", "reward", "is_arm_switch", "is_exploitative",
+    "queue_depth", "avg_prompt_len", "gpu_utilization", "cache_hit_rate",
+]
+
+
+def _write_cycle_csv(path: str, rows: list, cycle_metrics: list, log: list,
+                     exploit_flags: list, shift_step) -> None:
+    """Write the per-CARL-cycle CSV (schema = _CYCLE_CSV_COLUMNS).
+
+    `rows` (decision_rows), `cycle_metrics`, `log` (the controller log) and
+    `exploit_flags` are all one-per-control-cycle in the same order, so they align
+    by index. `ttft_p99_ms` is the rolling-window per-request TTFT p99 captured at
+    each cycle (true per-request series is not persisted -- the "else keep rolling
+    window" case). regime/reward/is_arm_switch come straight from `rows`; the four
+    raw features are denormalized from the logged context; is_exploitative is the
+    offline reconstruction above.
     """
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["cycle", "phase", "throughput_tps", "ttft_p99_ms",
-                    "arm_selected", "cumulative_regret"])
-        for i, (row, cm) in enumerate(zip(rows, cycle_metrics)):
+        w.writerow(_CYCLE_CSV_COLUMNS)
+        for i, (row, cm, entry, expl) in enumerate(
+                zip(rows, cycle_metrics, log, exploit_flags)):
             phase = 1 if (shift_step is not None and row["step"] >= shift_step) else 0
-            w.writerow([i, phase, f"{cm['throughput_tps']:.4f}",
-                        f"{cm['ttft_p99_ms']:.4f}", row["arm"],
-                        f"{row['cumulative_regret']:.6f}"])
+            sf = entry.state_features or []
+            w.writerow([
+                i, phase, f"{cm['throughput_tps']:.4f}", f"{cm['ttft_p99_ms']:.4f}",
+                row["arm"], f"{row['cumulative_regret']:.6f}",
+                row["regime"], f"{row['reward']:.6f}", row["is_arm_switch"], expl,
+                _fmt(_raw_feature(sf, "queue_depth")),
+                _fmt(_raw_feature(sf, "avg_prompt_len")),
+                _fmt(_raw_feature(sf, "gpu_utilization")),
+                _fmt(_raw_feature(sf, "cache_hit_rate")),
+            ])
 
 
 def analyze_carl(source, target, carl_runs, seeds) -> dict:
@@ -691,8 +790,9 @@ def analyze_carl(source, target, carl_runs, seeds) -> dict:
             post_regret.append(0.0)
         total_regret.append(rows[-1]["cumulative_regret"] if rows else 0.0)
 
+        exploit_flags = _reconstruct_exploitative(log, arms_view)
         _write_cycle_csv(_csv_path(source, target, seed), rows, r["cycle_metrics"],
-                         shift_step)
+                         log, exploit_flags, shift_step)
 
     # Final-arm mode across seeds (the policy CARL converges to post-shift).
     final_labels = [f"{f['regime']}#{f['arm']}" for f in finals if f]
