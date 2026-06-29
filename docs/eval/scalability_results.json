@@ -1,0 +1,124 @@
+{
+  "note": "CONTROL-LOOP SIMULATION. Measures CARL controller overhead (LinUCB select latency + parameter memory) and policy quality vs per-regime arm-space size. select() inverts a d x d matrix per arm, so latency scales with arm count; memory is exactly n_arms * (d^2 + d) float64 per regime.",
+  "mode": "scalability",
+  "settings": {
+    "arm_counts_per_regime": [
+      6,
+      12,
+      24,
+      48
+    ],
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "requests": 500,
+    "round_size_requests": 10,
+    "feature_dim": 10,
+    "n_regimes": 5,
+    "slo": {
+      "ttft_ms": 200.0,
+      "tpot_ms": 50.0,
+      "throughput_ref": 50.0
+    }
+  },
+  "by_arm_count": {
+    "6": {
+      "arms_per_regime": 6,
+      "total_arms": 30,
+      "decision_latency_ms": 0.0572155,
+      "memory_mb": 0.025177001953125,
+      "throughput_tps": {
+        "mean": 50.49866042147958,
+        "std": 5.9622142325326815,
+        "ci95": [
+          44.202370608338505,
+          56.05835037144393
+        ],
+        "n": 3
+      },
+      "oracle_capture_pct": {
+        "mean": 100.4259166111259,
+        "std": 1.2352947409840214,
+        "ci95": [
+          99.42464676250152,
+          101.21981802683372
+        ],
+        "n": 3
+      }
+    },
+    "12": {
+      "arms_per_regime": 12,
+      "total_arms": 60,
+      "decision_latency_ms": 0.11904777999999999,
+      "memory_mb": 0.05035400390625,
+      "throughput_tps": {
+        "mean": 50.49866042147958,
+        "std": 5.9622142325326815,
+        "ci95": [
+          44.202370608338505,
+          56.05835037144393
+        ],
+        "n": 3
+      },
+      "oracle_capture_pct": {
+        "mean": 101.12702685726174,
+        "std": 1.2109152526827756,
+        "ci95": [
+          100.02726460549242,
+          101.92617535217619
+        ],
+        "n": 3
+      }
+    },
+    "24": {
+      "arms_per_regime": 24,
+      "total_arms": 120,
+      "decision_latency_ms": 0.215683,
+      "memory_mb": 0.1007080078125,
+      "throughput_tps": {
+        "mean": 50.49866042147958,
+        "std": 5.9622142325326815,
+        "ci95": [
+          44.202370608338505,
+          56.05835037144393
+        ],
+        "n": 3
+      },
+      "oracle_capture_pct": {
+        "mean": 99.59786731931365,
+        "std": 1.2390711085331663,
+        "ci95": [
+          98.82151520249813,
+          100.3329752082073
+        ],
+        "n": 3
+      }
+    },
+    "48": {
+      "arms_per_regime": 48,
+      "total_arms": 240,
+      "decision_latency_ms": 0.41760646,
+      "memory_mb": 0.201416015625,
+      "throughput_tps": {
+        "mean": 50.49866042147958,
+        "std": 5.9622142325326815,
+        "ci95": [
+          44.202370608338505,
+          56.05835037144393
+        ],
+        "n": 3
+      },
+      "oracle_capture_pct": {
+        "mean": 100.5553845314372,
+        "std": 1.2686713895106192,
+        "ci95": [
+          99.48248072953993,
+          101.37977646635677
+        ],
+        "n": 3
+      }
+    }
+  }
+}
