@@ -169,7 +169,7 @@ def run_one(alpha: float, regimes: list, boundaries: list[int], slo: SLO,
     time_to_adaptation = statistics.fmean(lags) if lags else 0.0
 
     return {
-        "throughput": statistics.fmean(tps_series) if tps_series else 0.0,
+        "throughput_tps": statistics.fmean(tps_series) if tps_series else 0.0,
         "cumulative_regret": regret,
         "time_to_adaptation": time_to_adaptation,
         "oracle_capture_pct": (100.0 * reward_sum / oracle_sum) if oracle_sum > 0 else 0.0,
@@ -177,7 +177,7 @@ def run_one(alpha: float, regimes: list, boundaries: list[int], slo: SLO,
     }
 
 
-METRIC_KEYS = ["throughput", "cumulative_regret", "time_to_adaptation",
+METRIC_KEYS = ["throughput_tps", "cumulative_regret", "time_to_adaptation",
                "oracle_capture_pct"]
 
 
@@ -240,7 +240,7 @@ def _print(results: dict) -> None:
         a = results["per_alpha"][str(alpha)]
         rows.append([
             f"{alpha}",
-            h.fmt_pm(a["throughput"]["mean"], a["throughput"]["std"], 1),
+            h.fmt_pm(a["throughput_tps"]["mean"], a["throughput_tps"]["std"], 1),
             h.fmt_pm(a["cumulative_regret"]["mean"], a["cumulative_regret"]["std"], 2),
             h.fmt_pm(a["time_to_adaptation"]["mean"], a["time_to_adaptation"]["std"], 1),
             h.fmt_pm(a["oracle_capture_pct"]["mean"], a["oracle_capture_pct"]["std"], 1),

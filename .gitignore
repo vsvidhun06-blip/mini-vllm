@@ -19,3 +19,8 @@ dist/
 # Keep only .png screenshots under docs/screenshots/, no stray files.
 docs/screenshots/*
 !docs/screenshots/*.png
+
+# Host-specific environment capture: regenerated per run (CPU/GPU varies by
+# host), so it must not be committed -- a stale CPU record shipped to a GPU box
+# was being reused and misreporting the run environment.
+docs/eval/environment.json

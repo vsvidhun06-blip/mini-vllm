@@ -35,7 +35,7 @@
   },
   "per_alpha": {
     "0.1": {
-      "throughput": {
+      "throughput_tps": {
         "mean": 59.4957576663327,
         "std": 0.20197126130195303
       },
@@ -54,7 +54,7 @@
       "adaptations_mean": 4.333333333333333
     },
     "0.25": {
-      "throughput": {
+      "throughput_tps": {
         "mean": 59.4957576663327,
         "std": 0.20197126130195303
       },
@@ -73,7 +73,7 @@
       "adaptations_mean": 4.333333333333333
     },
     "0.5": {
-      "throughput": {
+      "throughput_tps": {
         "mean": 59.4957576663327,
         "std": 0.20197126130195303
       },
@@ -92,7 +92,7 @@
       "adaptations_mean": 4.333333333333333
     },
     "1.0": {
-      "throughput": {
+      "throughput_tps": {
         "mean": 58.15217570264239,
         "std": 0.2505196111201683
       },
@@ -111,7 +111,7 @@
       "adaptations_mean": 7.0
     },
     "2.0": {
-      "throughput": {
+      "throughput_tps": {
         "mean": 57.213359250657284,
         "std": 0.12830282018185965
       },
