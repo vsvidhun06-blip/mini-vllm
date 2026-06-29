@@ -46,6 +46,7 @@ Run:
   python scripts/eval/cross_model.py                       # N=3 seeds, 50 requests
   python scripts/eval/cross_model.py --seeds 42 --limit 30 # quick smoke
   python scripts/eval/cross_model.py --extended            # extended set + oracle capture
+  python scripts/eval/cross_model.py --extended --commit --push  # Colab: run + self-commit
 """
 from __future__ import annotations
 
@@ -561,6 +562,38 @@ def _print(results: dict) -> None:
             print(f"  - {m['short']}: {m['note']}")
 
 
+def _git_commit_results(paths: list, message: str, push: bool = False) -> None:
+    """Stage ONLY `paths`, commit, and (optionally) push -- for self-committing
+    just this eval's result file from a Colab GPU run (--commit / --push).
+
+    Deliberately narrow: it stages only the named result files (never a blanket
+    `git add -A`), skips cleanly when nothing changed or this isn't a git repo,
+    and adds no Co-Authored-By trailer. Any git failure is reported, not raised,
+    so a push/auth problem can never lose the just-computed results.
+    """
+    import subprocess
+    existing = [p for p in paths if os.path.exists(p)]
+    if not existing:
+        print("[--commit] no result file to commit", flush=True)
+        return
+    rel = ", ".join(os.path.relpath(p, _REPO_ROOT) for p in existing)
+    try:
+        subprocess.run(["git", "-C", _REPO_ROOT, "add", *existing], check=True)
+        # Nothing staged (results identical to HEAD) -> avoid an empty commit.
+        if subprocess.run(["git", "-C", _REPO_ROOT, "diff", "--cached",
+                           "--quiet"]).returncode == 0:
+            print(f"[--commit] {rel} unchanged; nothing to commit", flush=True)
+            return
+        subprocess.run(["git", "-C", _REPO_ROOT, "commit", "-m", message], check=True)
+        print(f"[--commit] committed {rel}", flush=True)
+        if push:
+            subprocess.run(["git", "-C", _REPO_ROOT, "push"], check=True)
+            print("[--push] pushed to origin", flush=True)
+    except Exception as exc:  # noqa: BLE001 -- git failure must not lose results
+        print(f"[--commit] git operation failed ({type(exc).__name__}: {exc}); "
+              f"results are still saved at {rel}.", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cross-model CARL validation (GPU).")
     parser.add_argument("--seeds", default=",".join(map(str, DEFAULT_SEEDS)),
@@ -571,14 +604,30 @@ def main() -> None:
                              "phi-2, gemma-2-2b + TinyLlama reference); CARL vs "
                              "Static-Best only; also reports oracle_capture_pct; "
                              "writes docs/eval/cross_model_extended_results.json")
+    parser.add_argument("--commit", action="store_true",
+                        help="git add+commit ONLY this run's result JSON afterwards "
+                             "(for self-committing a Colab GPU run)")
+    parser.add_argument("--push", action="store_true",
+                        help="also push after committing (implies --commit)")
     args = parser.parse_args()
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     n = args.limit if 0 < args.limit <= 200 else N_REQUESTS
     if args.extended:
+        out_path = EXTENDED_RESULTS_PATH
         run_all(seeds, n, models=EXTENDED_MODELS, methods=EXTENDED_METHODS,
-                out_path=EXTENDED_RESULTS_PATH, compute_oracle=True)
+                out_path=out_path, compute_oracle=True)
     else:
+        out_path = RESULTS_PATH
         run_all(seeds, n)
+
+    if args.commit or args.push:
+        if not torch.cuda.is_available():
+            print("[--commit] WARNING: no CUDA -- committing CPU smoke numbers, not "
+                  "the GPU results this eval is meant to produce.", flush=True)
+        _git_commit_results(
+            [out_path],
+            f"Add cross-model {'extended ' if args.extended else ''}eval results",
+            push=args.push)
 
 
 if __name__ == "__main__":

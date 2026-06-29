@@ -36,6 +36,7 @@ Four measurements:
 
 CPU-only for M1/M3/M4 (numpy, no torch). Run:
   python scripts/eval/overhead.py
+  python scripts/eval/overhead.py --commit --push   # Colab: run + self-commit results
 """
 from __future__ import annotations
 
@@ -692,6 +693,38 @@ def _print_report(results: dict) -> None:
     print(f"\nONE-LINER FOR PAPER:\n  {results['paper_one_liner']}")
 
 
+def _git_commit_results(paths: list, message: str, push: bool = False) -> None:
+    """Stage ONLY `paths`, commit, and (optionally) push -- for self-committing
+    just this eval's result file from a Colab GPU run (--commit / --push).
+
+    Deliberately narrow: it stages only the named result files (never a blanket
+    `git add -A`), skips cleanly when nothing changed or this isn't a git repo,
+    and adds no Co-Authored-By trailer. Any git failure is reported, not raised,
+    so a push/auth problem can never lose the just-computed results.
+    """
+    import subprocess
+    existing = [p for p in paths if os.path.exists(p)]
+    if not existing:
+        print("[--commit] no result file to commit", flush=True)
+        return
+    rel = ", ".join(os.path.relpath(p, _REPO_ROOT) for p in existing)
+    try:
+        subprocess.run(["git", "-C", _REPO_ROOT, "add", *existing], check=True)
+        # Nothing staged (results identical to HEAD) -> avoid an empty commit.
+        if subprocess.run(["git", "-C", _REPO_ROOT, "diff", "--cached",
+                           "--quiet"]).returncode == 0:
+            print(f"[--commit] {rel} unchanged; nothing to commit", flush=True)
+            return
+        subprocess.run(["git", "-C", _REPO_ROOT, "commit", "-m", message], check=True)
+        print(f"[--commit] committed {rel}", flush=True)
+        if push:
+            subprocess.run(["git", "-C", _REPO_ROOT, "push"], check=True)
+            print("[--push] pushed to origin", flush=True)
+    except Exception as exc:  # noqa: BLE001 -- git failure must not lose results
+        print(f"[--commit] git operation failed ({type(exc).__name__}: {exc}); "
+              f"results are still saved at {rel}.", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Measure CARL's runtime cost (CPU; M2 needs torch).")
@@ -701,6 +734,11 @@ def main() -> None:
                         help="real requests for M2 (default 100)")
     parser.add_argument("--no-inference", action="store_true",
                         help="skip M2 even if torch is available")
+    parser.add_argument("--commit", action="store_true",
+                        help="git add+commit ONLY this run's result JSON afterwards "
+                             "(for self-committing a Colab GPU run)")
+    parser.add_argument("--push", action="store_true",
+                        help="also push after committing (implies --commit)")
     args = parser.parse_args()
 
     env = capture_environment()
@@ -751,6 +789,13 @@ def main() -> None:
         json.dump(results, f, indent=2)
     _print_report(results)
     print(f"\nSaved overhead results to {RESULTS_PATH}", flush=True)
+
+    if args.commit or args.push:
+        if m2.get("skipped"):
+            print("[--commit] WARNING: M2 (real inference) was skipped -- these are "
+                  "CPU/partial numbers, not the full GPU results.", flush=True)
+        _git_commit_results([RESULTS_PATH], "Add overhead eval results",
+                            push=args.push)
 
 
 if __name__ == "__main__":
