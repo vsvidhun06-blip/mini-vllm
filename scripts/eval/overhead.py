@@ -221,25 +221,43 @@ def _summary(samples: list[float]) -> dict:
 
 
 def capture_environment() -> dict:
+    """Capture the run host, reusing docs/eval/environment.json ONLY if it still
+    matches the live device.
+
+    torch is OPTIONAL here (this is a torch-free CPU microbenchmark by default),
+    so the live device defaults to CPU/None when torch is absent. A cached record
+    is trusted only when its gpu AND torch fields agree with the live state;
+    otherwise (e.g. a CPU-written file shipped to a GPU Colab box, or vice-versa)
+    it is STALE and we regenerate -- so the recorded environment can never
+    silently misreport CPU on a GPU run (or the reverse).
+    """
+    # Live device state (torch may be unavailable -> CPU / None).
+    live_gpu, live_cuda, live_torch = "CPU", None, None
+    try:
+        import torch  # optional: only present on a GPU/Colab box
+        live_gpu = (torch.cuda.get_device_name(0)
+                    if torch.cuda.is_available() else "CPU")
+        live_cuda = torch.version.cuda
+        live_torch = torch.__version__
+    except Exception:
+        pass
+
     if os.path.exists(ENV_PATH):
         try:
             with open(ENV_PATH, "r", encoding="utf-8") as f:
                 env = json.load(f)
-            print(f"Environment: reused {ENV_PATH}", flush=True)
-            return env
+            if env.get("gpu") == live_gpu and env.get("torch") == live_torch:
+                print(f"Environment: reused {ENV_PATH}", flush=True)
+                return env
+            print(f"Environment: cached {ENV_PATH} disagrees with live device "
+                  f"(cached gpu={env.get('gpu')!r} torch={env.get('torch')!r} vs "
+                  f"live gpu={live_gpu!r} torch={live_torch!r}); refreshing.",
+                  flush=True)
         except Exception:
             pass  # fall through and rewrite a fresh one
     env = {"python": sys.version, "numpy": np.__version__,
-           "timestamp": datetime.now().isoformat()}
-    try:
-        import torch  # optional: only present on a GPU/Colab box
-        env["gpu"] = (torch.cuda.get_device_name(0)
-                      if torch.cuda.is_available() else "CPU")
-        env["cuda"] = torch.version.cuda
-        env["torch"] = torch.__version__
-    except Exception:
-        env["gpu"] = "CPU"
-        env["torch"] = None
+           "timestamp": datetime.now().isoformat(),
+           "gpu": live_gpu, "cuda": live_cuda, "torch": live_torch}
     os.makedirs(DOCS_EVAL, exist_ok=True)
     with open(ENV_PATH, "w", encoding="utf-8") as f:
         json.dump(env, f, indent=2)
