@@ -375,14 +375,26 @@ def _mean_std(vals: list) -> tuple:
 
 
 def capture_environment() -> dict:
+    """Capture the run host, reusing docs/eval/environment.json ONLY if it still
+    matches the live device.
+
+    A cached record is trusted only when its gpu AND torch fields agree with the
+    live torch.cuda state; otherwise (e.g. a CPU-written file shipped to a GPU
+    box, or vice-versa) it is STALE and we regenerate -- so the recorded
+    environment can never silently misreport CPU on a GPU run (or the reverse).
+    """
+    live_gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+    live_torch = torch.__version__
     if os.path.exists(ENV_PATH):
         try:
             with open(ENV_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                env = json.load(f)
+            if env.get("gpu") == live_gpu and env.get("torch") == live_torch:
+                return env
         except Exception:
             pass
-    env = {"gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
-           "cuda": torch.version.cuda, "torch": torch.__version__,
+    env = {"gpu": live_gpu,
+           "cuda": torch.version.cuda, "torch": live_torch,
            "python": sys.version, "timestamp": datetime.now().isoformat()}
     os.makedirs(DOCS_EVAL, exist_ok=True)
     with open(ENV_PATH, "w", encoding="utf-8") as f:
