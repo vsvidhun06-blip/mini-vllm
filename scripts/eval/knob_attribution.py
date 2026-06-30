@@ -206,6 +206,34 @@ def _run_config_over_seeds(tag: str, model, tokenizer, seeds: list, n: int,
     return per_run
 
 
+def _verify_raw_files(seeds: list) -> list:
+    """Guardrail: confirm every per-seed raw file per_seed_attribution.py needs
+    actually landed on disk -- one CARL-Full_run_NNN.json AND one
+    freeze_<knob>_run_NNN.json per seed. Read-only (a filesystem check; it writes
+    nothing and does not affect the results). Returns the list of missing paths
+    and logs loudly so a partial run is caught before the pairing analysis, not
+    silently mis-read as a missing baseline. A file can be absent only if that
+    (config, seed) run raised -- in which case _run_config_over_seeds already
+    printed FAILED above -- so this surfaces exactly those gaps."""
+    expected_tags = ["CARL-Full"] + [f"freeze_{k}" for k in KNOBS]
+    missing = [
+        os.path.join(RAW_DIR, f"{tag}_run_{seed:03d}.json")
+        for tag in expected_tags for seed in seeds
+        if not os.path.exists(os.path.join(RAW_DIR, f"{tag}_run_{seed:03d}.json"))
+    ]
+    if missing:
+        print(f"\n!!! GUARDRAIL: {len(missing)} expected raw file(s) MISSING from "
+              f"{RAW_DIR} -- per_seed_attribution.py pairing will be incomplete:",
+              flush=True)
+        for p in missing:
+            print(f"    MISSING {os.path.basename(p)}", flush=True)
+    else:
+        print(f"\nGuardrail OK: all {len(expected_tags) * len(seeds)} per-seed raw "
+              f"files present (CARL-Full + {len(KNOBS)} freeze configs x "
+              f"{len(seeds)} seeds).", flush=True)
+    return missing
+
+
 # ===========================================================================
 # Driver.
 # ===========================================================================
@@ -341,6 +369,7 @@ def run_all(seeds: list, n: int) -> dict:
         json.dump(results, f, indent=2)
     _print(results)
     print(f"\nSaved knob-attribution results to {RESULTS_PATH}", flush=True)
+    _verify_raw_files(seeds)
     return results
 
 
