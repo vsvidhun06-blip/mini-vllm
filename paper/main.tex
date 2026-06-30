@@ -60,8 +60,8 @@ eviction policy on a representative trace and freezes the winner. We
 show this is the wrong abstraction for production traffic, which is
 non-stationary --- alternating between latency-sensitive interactive
 bursts and throughput-oriented batch phases whose optimal
-configurations are nearly disjoint (interactive: batch=4, spec\_k=2;
-batch: batch=32, spec\_k=4). On such workloads a per-model-tuned static
+configurations are nearly disjoint (interactive: batch=4;
+batch: batch=32 with preemption disabled). On such workloads a per-model-tuned static
 configuration sacrifices 9--10\% throughput and inflates TTFT p99 by
 $\sim$8$\times$ (18,058~ms vs 2,199~ms on TinyLlama), and a naive
 reactive autotuner does worse than static (18.9\% vs 16.2\% oracle gap)

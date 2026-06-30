@@ -1,2 +1,13 @@
 \section{Evaluation}
 % Argues: experimental setup and headline results --- real-GPU cross-model gains (108.2% of static-best, +10.6% TinyLlama, +5.8% Qwen2), throughput/TTFT wins on non-stationary traffic, and statistical validation (n=30 paired t-test, large effect sizes).
+
+\subsection{Design Scope and Limitations}
+\label{sec:limitations}
+
+Speculative decoding in our implementation is single-request only: the
+scheduler runs the greedy self-speculative (early-exit) path solely when
+exactly one request is in the decode phase and reverts to standard
+batched decoding whenever two or more requests decode concurrently, and
+the implemented draft/target decoder is not wired into the paged-cache
+scheduler --- so speculation is inactive across the batched regime and is
+held disabled in the experiments reported here.
