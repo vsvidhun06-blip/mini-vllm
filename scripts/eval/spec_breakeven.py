@@ -66,6 +66,7 @@ Does NOT modify any existing evaluation script.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import random
@@ -309,6 +310,33 @@ def run(seeds: list, per_bucket: int, decode_tokens: int, use_lmsys: bool) -> di
                         })
                 print(f"  seed {seed} {bucket}[{pi+1}/{len(plist)}] done "
                       f"(vanilla {c_van_tpot_ms:.1f} ms/tok)", flush=True)
+
+        # --- Per-seed GPU cleanup (see below: does NOT touch any measurement) --
+        # Every _serve_one() above allocated a fresh ContinuousBatchScheduler,
+        # each owning a PagedKVCache -- one large GPU tensor sized num_blocks x
+        # block_size. Those schedulers are locals inside _serve_one() and are
+        # already unreferenced here (the scheduler points at the model, never the
+        # reverse), so nothing in this scope still holds a CUDA tensor. What keeps
+        # their memory from being reused by the next seed is twofold, and each
+        # line below addresses one cause:
+        #   1. `del prompts` -- drops this seed's prompt tensors (the only tensor
+        #      objects still named in this scope) so they are not pinned across
+        #      the collection below.
+        #   2. `gc.collect()` -- a scheduler/request/KV-pool object graph can
+        #      contain reference cycles, which plain refcounting never frees; the
+        #      cyclic collector must run so those GPU tensors are actually
+        #      released back to the caching allocator before the next step.
+        #   3. `torch.cuda.empty_cache()` -- returns the allocator's now-free but
+        #      reserved (and fragmented) blocks to the CUDA driver, so seed N+1
+        #      starts from a clean pool instead of OOM-ing on fragmentation. This
+        #      is the line that actually fixes the seed-43 OOM.
+        # All three run OUTSIDE every timed region (timing lives inside
+        # _serve_one, around the step loop) and touch no RNG, so seed results are
+        # bit-for-bit unchanged; only when the seed is fully finished do we run.
+        del prompts
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     results = _aggregate(records, vanilla_by_bucket, prompt_source, seeds,
                          per_bucket, decode_tokens)
