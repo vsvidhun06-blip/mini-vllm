@@ -1,5 +1,25 @@
 % CARL: Coordinated Adaptive Runtime for LLM Serving
 %
+% ============================================================================
+% SUPERSEDED DRAFT --- EXCLUDED FROM EVERY COMPILE TARGET. DO NOT SUBMIT/COMPILE.
+% ----------------------------------------------------------------------------
+% This is an earlier standalone draft. Its speculative-decoding claims are
+% STRONGER than, and inconsistent with, the authoritative paper in
+% paper/main.tex. Specifically, this file treats speculative decoding as an
+% active throughput lever --- an ablation row crediting spec decode +2.4 tok/s
+% (\S Ablation), "selecting deeper speculation when acceptance helps" and
+% "growing the batch and speculation depth jointly" (\S Evaluation), and a live
+% spec_k in [0,8] knob (\S Config). The revised paper walks this back: it fixes
+% speculation to a disabled/single-request setting and argues the driver of
+% performance under workload change is adaptive online scheduling, NOT
+% speculative decoding (see paper/sections/01-intro.tex).
+%
+% This file is therefore intentionally NOT part of any compile target. The
+% authoritative document is paper/main.tex, which \input's paper/sections/*.tex;
+% nothing \input's this file and no build script compiles it. It is retained
+% for reference only. Do not compile or submit it, and do not cite its numbers.
+% ============================================================================
+%
 % Self-contained article so it compiles with a stock pdflatex + bibtex anywhere
 % (no external conference style needed). To target the MLSys camera-ready, swap
 % \documentclass{article} for \documentclass{mlsys2024} and drop in mlsys2024.sty.
