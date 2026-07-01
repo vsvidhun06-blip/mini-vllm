@@ -220,6 +220,15 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
 
     records: list[dict] = []
     decision_us: list[float] = []
+    # --- per-step throughput log (ADDITIVE: observation only) -----------------
+    # One entry per scheduler step so the recovery analysis can build a
+    # throughput(t) curve directly, instead of inferring it from the run-level
+    # aggregate. step_log/shift_* are written but never READ inside this loop, so
+    # they cannot change scheduler or controller behaviour. shift_t / shift_step
+    # mark the instant the BATCH phase is injected (the regime shift).
+    step_log: list[dict] = []
+    shift_t: float | None = None
+    shift_step: int | None = None
     total_tokens = 0
     finished_count = 0
     phase1_done = (len(phase1) == 0)
@@ -230,6 +239,16 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
         now = time.perf_counter()
         dt = now - last_step_t
         last_step_t = now
+
+        # Record this step's wall time (since t0), tokens emitted, active batch
+        # size and step index. Pure append -- no control flow depends on it.
+        step_log.append({
+            "t": now - t0,
+            "dt": dt,
+            "tokens": len(emitted),
+            "active": len(sched.active),
+            "step": sched._step_idx,
+        })
 
         for rid, _tok in emitted:
             if rid not in first_tok:
@@ -258,6 +277,8 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
             for spec in phase1:
                 _submit(spec)
             phase1_done = True
+            shift_t = now - t0           # wall-clock of the regime shift.
+            shift_step = sched._step_idx  # step index of the regime shift.
             if oracle_phase1 is not None:
                 _apply_sched(sched, oracle_phase1)
 
@@ -290,6 +311,11 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
         "wall_s": wall,
         "decision_us": decision_us,
         "overhead_pct": overhead_pct,
+        # Additive per-step throughput trace + regime-shift markers (see above).
+        "step_log": step_log,
+        "shift_t": shift_t,
+        "shift_step": shift_step,
+        "n_phase0": len(phase0),
     }
 
 
