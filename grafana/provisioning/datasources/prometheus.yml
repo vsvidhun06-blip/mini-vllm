@@ -1,0 +1,14 @@
+# Pre-provisioned Grafana datasource: the Prometheus service in this compose.
+# `uid: prometheus` is referenced by every panel in grafana/dashboards/mini_vllm.json,
+# so the dashboard binds to this datasource automatically on first load.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    # Service name on the `obs` network -> Prometheus' in-container port.
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

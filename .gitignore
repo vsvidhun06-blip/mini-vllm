@@ -1,0 +1,29 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.claude/
+*.egg-info/
+.DS_Store
+_backup_*/
+
+# Editor / build artefacts.
+*.tmp
+*.bak
+build/
+dist/
+.vscode/
+.idea/
+
+# Keep only .png screenshots under docs/screenshots/, no stray files.
+docs/screenshots/*
+!docs/screenshots/*.png
+
+# Host-specific environment capture: regenerated per run (CPU/GPU varies by
+# host), so it must not be committed -- a stale CPU record shipped to a GPU box
+# was being reused and misreporting the run environment.
+docs/eval/environment.json
+
+# Full end-to-end run log: regenerated per run, not an artifact.
+test_run_full.log

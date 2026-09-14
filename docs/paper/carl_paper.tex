@@ -1,0 +1,419 @@
+% CARL: Coordinated Adaptive Runtime for LLM Serving
+%
+% ============================================================================
+% SUPERSEDED DRAFT --- EXCLUDED FROM EVERY COMPILE TARGET. DO NOT SUBMIT/COMPILE.
+% ----------------------------------------------------------------------------
+% This is an earlier standalone draft. Its speculative-decoding claims are
+% STRONGER than, and inconsistent with, the authoritative paper in
+% paper/main.tex. Specifically, this file treats speculative decoding as an
+% active throughput lever --- an ablation row crediting spec decode +2.4 tok/s
+% (\S Ablation), "selecting deeper speculation when acceptance helps" and
+% "growing the batch and speculation depth jointly" (\S Evaluation), and a live
+% spec_k in [0,8] knob (\S Config). The revised paper walks this back: it fixes
+% speculation to a disabled/single-request setting and argues the driver of
+% performance under workload change is adaptive online scheduling, NOT
+% speculative decoding (see paper/sections/01-intro.tex).
+%
+% This file is therefore intentionally NOT part of any compile target. The
+% authoritative document is paper/main.tex, which \input's paper/sections/*.tex;
+% nothing \input's this file and no build script compiles it. It is retained
+% for reference only. Do not compile or submit it, and do not cite its numbers.
+% ============================================================================
+%
+% Self-contained article so it compiles with a stock pdflatex + bibtex anywhere
+% (no external conference style needed). To target the MLSys camera-ready, swap
+% \documentclass{article} for \documentclass{mlsys2024} and drop in mlsys2024.sty.
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=0.85in]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\title{\textbf{CARL: Coordinated Adaptive Runtime for LLM Serving}}
+\author{Mini-vLLM Project}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Modern LLM serving engines expose many independently tunable knobs --- batch
+size, prefill chunk size, speculative-decoding depth, request routing, and KV
+cache eviction. Production systems tune these knobs in isolation, typically with
+per-component heuristics that each react to a single bottleneck. We argue that
+this leaves \emph{joint} gains unexploited: the optimal operating point is a
+\emph{combination} of knob settings that no single-knob heuristic can express,
+and the right combination shifts as the workload does. We present CARL, a
+Coordinated Adaptive Runtime that drives all five subsystems from one online
+controller. CARL observes a unified runtime-state vector, classifies the current
+workload into one of five regimes, and uses a per-regime contextual bandit
+(LinUCB) to select a joint configuration, applying it to the live engine through
+thread-safe reconfiguration. Built on Mini-vLLM, a full continuous-batching
+inference engine, CARL warm-starts from hand-tuned per-regime defaults, so it is
+never worse than the expert baseline and learns to improve online. In a
+control-loop evaluation over non-stationary workloads, CARL tracks a
+perfect-knowledge regime oracle (37.3\% vs.\ 33--35\% SLO satisfaction for static
+and independently-tuned baselines) and adapts to regime shifts within a single
+control interval. We release the implementation, the evaluation harness, and an
+honest account of what the simulation does and does not establish.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+An LLM inference engine is a bundle of optimizations: continuous
+batching~\cite{yu2022orca}, paged KV cache~\cite{kwon2023vllm}, radix prefix
+caching~\cite{zheng2024sglang}, chunked prefill~\cite{agrawal2024sarathiserve},
+speculative decoding~\cite{leviathan2023speculative}, H2O cache
+eviction~\cite{zhang2023h2o}, and cost-aware request routing. Each ships with
+parameters that materially change latency, throughput, and cost, and each is
+usually tuned on its own --- a batch-size policy here, an eviction threshold
+there --- by heuristics that react to one signal at a time.
+
+This decomposition is convenient but lossy. The knobs interact: a large batch
+that is good for throughput raises per-token latency, which speculative decoding
+can claw back, but only at a draft depth that depends on how many requests are
+in flight, which in turn depends on the admission and eviction policy. The
+\emph{best} setting is a point in a joint space, and a per-component tuner that
+moves one knob at a time cannot represent it. Worse, the best joint point is not
+fixed: interactive traffic, batch jobs, sudden bursts, prefix-heavy templates,
+and long-context requests each want a different operating point, and real
+deployments cycle through all of them.
+
+\paragraph{Research question.} \emph{Can a unified online controller that jointly
+adapts all serving parameters outperform independently tuned components under
+non-stationary workloads?}
+
+\paragraph{Claim.} Yes. We show that a single contextual-bandit controller,
+given a fused view of runtime state and a discrete joint-configuration action
+space, learns per-regime operating points that match a perfect-knowledge oracle
+and beat both static configurations and a reactive per-component auto-tuner,
+with negligible adaptation lag at regime transitions.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item \textbf{A unified runtime-state observer} (\S\ref{sec:state}) that fuses
+  signals from the scheduler, speculative decoder, router, and KV cache into one
+  normalized feature vector, plus a rule-based workload-regime classifier.
+  \item \textbf{A joint configuration space} (\S\ref{sec:config}) that names every
+  knob the controller drives in a single dataclass, with hand-tuned per-regime
+  defaults that double as the controller's warm start.
+  \item \textbf{A coordinated bandit controller} (\S\ref{sec:bandit}) using
+  per-regime LinUCB over discrete joint configurations, with a utility reward
+  combining throughput, SLO satisfaction, and cache hit rate, and a Thompson-
+  sampling variant for ablation.
+  \item \textbf{Thread-safe live integration} into a full inference engine
+  (\S\ref{sec:impl}) via an optional, backward-compatible controller hook.
+  \item \textbf{An evaluation} (\S\ref{sec:eval}) over four workloads including
+  the key non-stationary experiment and real LMSYS-Chat-1M~\cite{zheng2023lmsys}
+  traffic, with an ablation isolating each coordinated component.
+\end{itemize}
+
+\section{Background}
+\label{sec:background}
+
+\paragraph{LLM serving components.} Continuous (iteration-level)
+batching~\cite{yu2022orca} schedules one decode step at a time so finished
+requests leave and new ones join the batch immediately. PagedAttention and the
+paged KV cache~\cite{kwon2023vllm} remove fragmentation by allocating KV in
+fixed blocks; RadixAttention~\cite{zheng2024sglang} shares KV across requests
+with common prefixes. Chunked prefill~\cite{agrawal2023sarathi,
+agrawal2024sarathiserve} splits long prompts so decode latency is not held
+hostage to a monolithic prefill. Speculative decoding~\cite{leviathan2023speculative}
+trades a cheap draft for parallel verification, turning the memory-bandwidth-
+bound decode step into a throughput win when acceptance is high. FlashAttention
+and FlashAttention-2~\cite{dao2022flashattention, dao2023flashattention2}
+make the attention kernel IO-aware. H2O~\cite{zhang2023h2o} evicts low-attention
+"cold" tokens to serve sequences longer than the cache budget.
+
+\paragraph{Online learning for systems.} Contextual bandits choose an action per
+context to maximize immediate reward. LinUCB~\cite{li2010contextual} maintains
+per-arm ridge-regression statistics and selects by an upper confidence bound,
+balancing exploitation against principled exploration; linear Thompson
+Sampling~\cite{agrawal2013thompson} instead samples from the per-arm posterior.
+Both fit the serving control problem, where a configuration's effect on latency
+and throughput is observed within one control interval, making the long-horizon
+credit assignment of full reinforcement learning unnecessary.
+
+\paragraph{Limitations of existing auto-tuners.} Predictability-oriented
+schedulers~\cite{gujarati2020clockwork} and goodput-oriented
+disaggregation~\cite{zhong2024distserve, li2023alpaserve} optimize specific
+axes, and per-component auto-tuners react to a single bottleneck signal. None
+adapt the \emph{joint} configuration online as the workload regime changes,
+which is the gap CARL targets.
+
+\section{CARL Architecture}
+\label{sec:arch}
+
+CARL is a five-stage loop run every $N$ scheduler steps: observe, classify,
+select, apply, reward. Figure-free in this draft (see
+\texttt{docs/paper/figures/}); the structure is summarized below.
+
+\subsection{Runtime State Observer}
+\label{sec:state}
+
+The observer reads the live engine into a flat, normalized 10-feature vector:
+queue depth, average prompt length, GPU utilization, cache hit rate,
+speculative-decode acceptance rate, $p_{50}$ TTFT, $p_{99}$ TPOT, throughput,
+active requests, and mean batch size. Latency and throughput are rolling
+statistics over a 100-sample window; the rest are instantaneous reads. Every
+read is defensive: a missing component or attribute degrades to a neutral
+default rather than failing, so the observer works against test stubs and the
+real engine alike. Each feature is divided by a characteristic scale so the
+linear bandit downstream sees comparable magnitudes.
+
+\subsection{Workload Regime Classifier}
+\label{sec:regime}
+
+A snapshot-only rule classifier maps the state to one of five regimes, checked
+in priority order: \textsc{Long\_Context} ($\overline{\text{prompt}} > 512$),
+\textsc{Cache\_Heavy} (hit rate $\geq 0.5$), \textsc{Burst} (queue $\geq 24$ and
+$> 2\times$ in-flight), \textsc{Batch} (queue $\geq 8$ or
+$\overline{\text{prompt}} \geq 256$), else \textsc{Interactive}. The classifier
+need not be perfect: the regime only selects \emph{which} bandit acts, and a
+misread is recoverable because that bandit still optimizes against the true
+reward.
+
+\subsection{Joint Configuration Space}
+\label{sec:config}
+
+A single \texttt{CARLConfig} names every knob CARL controls: scheduler
+(\texttt{max\_batch\_size} $\in[1,32]$, \texttt{chunk\_size} $\in[64,512]$,
+\texttt{preemption}), speculation (\texttt{spec\_k} $\in[0,8]$), router
+(\texttt{routing\_threshold}, \texttt{cache\_affinity\_weight}), KV cache
+(\texttt{eviction\_threshold} $\in[0.5,0.95]$, \texttt{eviction\_window}
+$\in[16,64]$), and CUDA graphs. A hand-tuned default per regime encodes expert
+knowledge (e.g., \textsc{Interactive}: small batch, $k{=}2$, gentle eviction;
+\textsc{Batch}: max batch, $k{=}4$, dense eviction) and serves as the bandit's
+warm start. From each default we derive 5--6 discrete arms by perturbing the one
+or two knobs most salient to that regime, keeping the action space small enough
+to learn from a short workload.
+
+\subsection{Coordinated Bandit Controller}
+\label{sec:bandit}
+
+CARL keeps one bandit per regime over that regime's arms. Context is the
+normalized state vector $x$. LinUCB maintains per-arm $A_a = I + \sum x x^\top$
+and $b_a = \sum r\,x$, and selects
+$\arg\max_a\; \theta_a^\top x + \alpha\sqrt{x^\top A_a^{-1} x}$ with
+$\theta_a = A_a^{-1} b_a$, then updates the chosen arm. The reward is
+\[
+u = w_1\,\widehat{\text{tput}} + w_2(1{-}v_{\text{ttft}}) + w_3(1{-}v_{\text{tpot}}) + w_4\,\text{hit},
+\]
+with default weights $(0.3, 0.3, 0.2, 0.2)$, where $v_\bullet$ are SLO-violation
+rates over the metric window. Because the controller acts and \emph{then}
+observes the consequence, the reward computed at interval $t$ measures the
+configuration applied at $t{-}1$ and is credited to that arm --- standard
+delayed-reward bandit timing. Keeping bandits per-regime means a regime
+transition swaps in an already-learned policy instead of re-learning from a
+contaminated average. A linear Thompson-sampling variant shares the same
+sufficient statistics and serves as an ablation.
+
+\subsection{Integration with the Serving Loop}
+\label{sec:integration}
+
+The controller holds references to the live components and mutates their
+attributes in place. The entire select--apply--update cycle runs under one lock,
+so the engine's pumper thread never observes a half-applied configuration and
+the bandit's state never races. The cycle self-gates to its observe interval, so
+the engine calls it unconditionally every step and pays nothing between
+intervals.
+
+\section{Implementation}
+\label{sec:impl}
+
+CARL is implemented on Mini-vLLM, a from-scratch inference engine with
+continuous batching, paged and radix KV caches, H2O eviction, self-speculative
+and draft/target speculative decoding~\cite{leviathan2023speculative}, CUDA-graph
+decode, FlashAttention-2~\cite{dao2023flashattention2} and Triton kernels,
+multi-LoRA serving~\cite{sheng2024slora}, chunked prefill, disaggregated
+prefill/decode~\cite{zhong2024distserve}, and a cost-aware router benchmarked on
+LMSYS-Chat-1M. The CARL package (\texttt{src/carl/}) is $\sim$900 lines across
+five modules (state, config, bandit, controller, API) plus 54 CPU unit tests.
+
+Live reconfiguration uses a strict defensive setter: CARL writes only knobs a
+component actually declares, so wiring it into an engine that lacks a knob is a
+no-op for that knob, never a crash. The router gained two explicit live knobs
+(\texttt{routing\_threshold}, \texttt{cache\_affinity\_weight}) precisely so the
+controller has named targets. Integration with the FastAPI server is opt-in via
+an \texttt{ENABLE\_CARL} flag and an optional controller hook in the pumper loop;
+with the flag unset the engine is byte-identical to before. Five endpoints
+(\texttt{/carl/state}, \texttt{/stats}, \texttt{/log}, \texttt{/config},
+\texttt{/reset}) expose and override the controller, the last two for ablation.
+The package is torch-free (numpy only), so the controller, its tests, and the
+evaluation harness run on CPU.
+
+\paragraph{Overhead.} We characterize CARL's runtime cost by decomposing
+\texttt{step()} into its five blocks and timing each over $10{,}000$ synthetic
+cycles (\texttt{scripts/eval/overhead.py}). In isolation the control step costs
+$\sim$$79\,\mu$s mean / $102\,\mu$s P99, of which $\sim$76\% is the LinUCB bandit
+(dominated by the per-arm $d\times d$ matrix inverse in selection) and only
+$\sim$1.3\% is logging. The cost is flat as the number of requests seen grows
+from $10^2$ to $10^4$ ($1.06\times$): \texttt{step()} is $O(d^2)$/$O(d^3)$ in the
+\emph{feature dimension} but $O(1)$ in requests, so the matrix update never
+dominates at scale, and the learned state is $\sim$$0.03$\,MB of $A,b$ statistics
+across all arms. This also explains the $\sim$$2.5$\,ms P99 decision latency we
+report inside the live serving loop: it is $\sim$25$\times$ the isolated cost and
+is therefore dominated by serving-loop framing (lock contention with the pumper
+thread, garbage collection, first-call warmup), not by the bandit algebra or
+logging. CARL is thus a negligible, constant tax on serving.
+
+\section{Evaluation}
+\label{sec:eval}
+
+\paragraph{Honest scope.} Our evaluation is a \emph{control-loop simulation}, not
+a wall-clock GPU benchmark. It drives the real CARL controller, classifier, and
+bandits over an analytical serving cost model that maps a configuration and the
+true regime to realized throughput and per-request latencies. We make this
+choice deliberately: the contribution under test is the control \emph{policy},
+which is hardware-independent, and a faithful answer needs many hundreds of
+regime-varying control cycles. The cost model encodes the same domain knowledge
+as the hand-tuned defaults, so the regime oracle is near-optimal by construction
+and CARL's task is to \emph{learn online} to approach it without being told the
+regime. We therefore report \emph{comparisons between baselines}, not absolute
+speedups; a wall-clock GPU harness is future work (\S\ref{sec:discussion}).
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+
+Each control interval serves a round of requests under a fixed configuration;
+the controller observes once per round and is credited the previous round's
+realized metrics. SLOs are TTFT $<100$\,ms and TPOT $<50$\,ms (latency
+scenarios) and throughput $>20$\,tok/s (batch). Baselines: \texttt{static\_default}
+(fixed config), \texttt{independent\_autotuner} (the engine's real per-component
+AutoTuner reacting to a synthetic bottleneck), \texttt{regime\_oracle}
+(\texttt{DEFAULT\_CONFIGS} for the true regime), \texttt{carl\_linucb}
+(proposed), and \texttt{carl\_thompson} (ablation).
+
+\subsection{Interactive and Batch Workloads}
+\label{sec:eval12}
+
+On the interactive workload (200 short-prompt requests), CARL reaches 100\% SLO
+satisfaction vs.\ 99.5\% for the static default, improving throughput modestly
+(39.8 vs.\ 35.3 tok/s) by selecting deeper speculation when acceptance helps. On
+the batch workload (200 long-prompt requests), CARL lifts throughput from 66.0
+to 84.5 tok/s --- a 28\% gain --- by growing the batch and speculation depth
+jointly, a combination the per-component tuner cannot select because it only
+\emph{shrinks} batch size.
+
+\subsection{Non-stationary Workload (key result)}
+\label{sec:eval3}
+
+The headline experiment shifts the workload without notice:
+\textsc{Interactive} $\rightarrow$ \textsc{Batch} $\rightarrow$ \textsc{Burst},
+200 requests each. Table~\ref{tab:nonstationary} reports the result. CARL-LinUCB
+matches the regime oracle on every metric (60.4 tok/s, 37.3\% SLO satisfaction)
+while the best static configuration and the independent auto-tuner stall at
+33--35\%. CARL's measured adaptation lag is \textbf{0 rounds}: because each regime
+owns its bandit, detecting the new regime instantly swaps in the learned policy.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Non-stationary workload (\textsc{Interactive}$\rightarrow$\textsc{Batch}$\rightarrow$\textsc{Burst}).
+Higher tok/s and SLO\% are better. Control-loop simulation.}
+\label{tab:nonstationary}
+\begin{tabular}{lrrr}
+\toprule
+Policy & tok/s & SLO\% & adapt. \\
+\midrule
+static\_best\_interactive   & 48.3 & 33.8 & 0 \\
+static\_best\_batch         & 53.0 & 34.7 & 0 \\
+independent\_autotuner      & 47.9 & 33.5 & 14 \\
+regime\_oracle              & 60.4 & 37.3 & 2 \\
+\textbf{carl\_linucb}       & \textbf{60.4} & \textbf{37.3} & 3 \\
+carl\_thompson              & 57.8 & 36.0 & 43 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Real LMSYS Traffic}
+\label{sec:eval4}
+
+On 500 LMSYS-Chat-1M~\cite{zheng2023lmsys} prompts --- a natural mix whose
+per-prompt lengths drive the regime classifier --- CARL again tracks the oracle
+(55.1 vs.\ 55.3 tok/s, 56.4\% SLO) and beats the static default (54.2\%) and the
+independent auto-tuner (53.4\%), with 98\% regime-detection accuracy.
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+
+Freezing each coordinated component at its global default, on the non-stationary
+workload, isolates its contribution (Table~\ref{tab:ablation}). Removing batch
+adaptation costs the most (60.4 $\rightarrow$ 54.6 tok/s), followed by eviction
+adaptation; disabling cache-affinity routing is neutral here because the
+non-stationary stream contains no cache-heavy regime --- exactly the expected
+behavior, confirming the knob is inert when irrelevant rather than harmful.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Ablation: CARL with each component frozen (non-stationary). Control-loop simulation.}
+\label{tab:ablation}
+\begin{tabular}{lrr}
+\toprule
+Variant & tok/s & SLO\% \\
+\midrule
+carl\_full              & 60.4 & 37.3 \\
+\;\;-- no spec decode   & 58.0 & 35.5 \\
+\;\;-- no batch adapt   & 54.6 & 34.7 \\
+\;\;-- no eviction adapt& 55.4 & 35.2 \\
+\;\;-- no cache affinity& 60.4 & 37.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{When CARL helps most.} The gains concentrate at regime transitions and
+in regimes whose optimum is a knob \emph{combination} (e.g.\ batch: large batch
+$+$ deep speculation). Where one knob dominates and a per-component tuner can
+reach it, CARL's advantage shrinks to its warm start --- which, by design, is
+already the expert baseline.
+
+\paragraph{Limitations.} (1) The evaluation is a simulation; absolute numbers are
+illustrative and a GPU wall-clock harness is the clear next step. (2) The
+controller targets a single GPU; coordinating across a disaggregated or
+multi-replica deployment adds cross-node state. (3) The explore/exploit trade-off
+means early intervals may select sub-optimal arms; the warm start bounds this
+downside but does not eliminate exploration cost, visible in the Thompson
+variant's higher adaptation count and slightly lower reward. (4) The regime set
+and arm sets are hand-designed; learning them is open.
+
+\section{Related Work}
+\label{sec:related}
+
+CARL builds directly on continuous batching~\cite{yu2022orca}, paged and radix KV
+management~\cite{kwon2023vllm, zheng2024sglang}, chunked
+prefill~\cite{agrawal2024sarathiserve}, speculative
+decoding~\cite{leviathan2023speculative}, and H2O eviction~\cite{zhang2023h2o},
+treating each as a tunable subsystem rather than a fixed policy. Where
+Clockwork~\cite{gujarati2020clockwork} delivers predictability bottom-up and
+DistServe~\cite{zhong2024distserve} / AlpaServe~\cite{li2023alpaserve} optimize
+placement and disaggregation, CARL is orthogonal: it adapts the joint runtime
+configuration online. Our learning machinery is standard contextual
+bandits~\cite{li2010contextual, agrawal2013thompson}; the novelty is the action
+space (a joint serving configuration) and the per-regime structure.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Component-level optimization leaves joint, workload-dependent gains on the table.
+CARL closes that gap with a single coordinated controller: a fused runtime-state
+observer, a regime classifier, a joint configuration space, and a per-regime
+contextual bandit that adapts the whole engine online and thread-safely. In a
+control-loop evaluation over non-stationary and real LMSYS traffic, CARL tracks a
+perfect-knowledge oracle and outperforms static and independently-tuned
+baselines, adapting to regime shifts within one control interval. The natural
+next step is a wall-clock GPU harness to convert these control-policy results
+into measured end-to-end speedups.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

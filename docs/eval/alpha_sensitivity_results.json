@@ -1,0 +1,134 @@
+{
+  "note": "CONTROL-LOOP SIMULATION (see _harness.SIM_NOTE). Real CARL controller/LinUCB over benchmark_carl's analytical cost model; the alpha-to-alpha comparison is the result, not absolute values. Oracle is near-optimal by construction, so regret / oracle-capture measure how well each alpha tracks a known-good target online.",
+  "settings": {
+    "alphas": [
+      0.1,
+      0.25,
+      0.5,
+      1.0,
+      2.0
+    ],
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "requests": 50,
+    "workload": "NON-STATIONARY (INTERACTIVE->BATCH->BURST)",
+    "phase_sizes": [
+      16,
+      16,
+      18
+    ],
+    "boundaries": [
+      16,
+      32
+    ],
+    "slo_ttft_ms": 200.0,
+    "dynoracle_reward_per_regime": {
+      "interactive": 0.7601640961529399,
+      "batch": 0.8006,
+      "burst": 0.7538356106052964,
+      "cache_heavy": 0.9399684467315732,
+      "long_context": 0.4869854164327682
+    }
+  },
+  "per_alpha": {
+    "0.1": {
+      "throughput_tps": {
+        "mean": 59.4957576663327,
+        "std": 0.20197126130195303
+      },
+      "cumulative_regret": {
+        "mean": 1.5553192964122105,
+        "std": 0.48259562754659957
+      },
+      "time_to_adaptation": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "oracle_capture_pct": {
+        "mean": 99.4532159586815,
+        "std": 1.6315971745998477
+      },
+      "adaptations_mean": 4.333333333333333
+    },
+    "0.25": {
+      "throughput_tps": {
+        "mean": 59.4957576663327,
+        "std": 0.20197126130195303
+      },
+      "cumulative_regret": {
+        "mean": 1.5553192964122105,
+        "std": 0.48259562754659957
+      },
+      "time_to_adaptation": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "oracle_capture_pct": {
+        "mean": 99.4532159586815,
+        "std": 1.6315971745998477
+      },
+      "adaptations_mean": 4.333333333333333
+    },
+    "0.5": {
+      "throughput_tps": {
+        "mean": 59.4957576663327,
+        "std": 0.20197126130195303
+      },
+      "cumulative_regret": {
+        "mean": 1.5553192964122105,
+        "std": 0.48259562754659957
+      },
+      "time_to_adaptation": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "oracle_capture_pct": {
+        "mean": 99.4532159586815,
+        "std": 1.6315971745998477
+      },
+      "adaptations_mean": 4.333333333333333
+    },
+    "1.0": {
+      "throughput_tps": {
+        "mean": 58.15217570264239,
+        "std": 0.2505196111201683
+      },
+      "cumulative_regret": {
+        "mean": 1.7296167516676961,
+        "std": 0.5882926308359698
+      },
+      "time_to_adaptation": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "oracle_capture_pct": {
+        "mean": 98.94261252632161,
+        "std": 1.9203219762964805
+      },
+      "adaptations_mean": 7.0
+    },
+    "2.0": {
+      "throughput_tps": {
+        "mean": 57.213359250657284,
+        "std": 0.12830282018185965
+      },
+      "cumulative_regret": {
+        "mean": 2.154623584151658,
+        "std": 0.7295038230659927
+      },
+      "time_to_adaptation": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "oracle_capture_pct": {
+        "mean": 97.46683584241119,
+        "std": 2.2352614538457343
+      },
+      "adaptations_mean": 18.666666666666668
+    }
+  },
+  "recommended_alpha_min_regret": 0.1
+}

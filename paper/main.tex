@@ -1,0 +1,105 @@
+%% main.tex -- CARL (MLSys 2027 submission)
+%%
+%% Format: MLSys 2-column (same submission format as MLSys 2026).
+%% Requires the MLSys style file `mlsys2024.sty` (and `fancyhdr`) to be present
+%% in this directory or on TEXINPUTS. The MLSys author kit reuses the same
+%% style year-to-year; drop the current year's .sty in here to compile.
+
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}   % for professional tables
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+
+% hyperref makes hyperlinks in the resulting PDF.
+\usepackage{hyperref}
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+\usepackage{mlsys2024}
+
+% If accepted, instead use the following line for the camera-ready submission:
+%\usepackage[accepted]{mlsys2024}
+
+% The \mlsystitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\mlsystitlerunning{Adaptive Online Scheduling for Non-Stationary LLM Serving}
+
+\begin{document}
+
+\twocolumn[
+\mlsystitle{CARL: Adaptive Online Scheduling, Not Speculative\\Decoding, Drives LLM Serving Under Workload Change}
+
+% It is OKAY to include author information, even for blind
+% submissions: the style file will automatically remove it for you
+% unless you've provided the [accepted] option to the mlsys2024
+% package.
+\begin{mlsysauthorlist}
+\mlsysauthor{Anonymous Author(s)}{anon}
+\end{mlsysauthorlist}
+
+\mlsysaffiliation{anon}{Anonymous Institution}
+
+\mlsyscorrespondingauthor{Anonymous Author(s)}{anon@example.com}
+
+% You may provide any keywords that you find helpful for describing your paper.
+\mlsyskeywords{LLM serving, online scheduling, contextual bandits, non-stationary workloads, speculative decoding}
+
+\vskip 0.3in
+
+\begin{abstract}
+Modern LLM serving systems are configured offline: an operator
+grid-searches batch size, chunk size, speculative-decoding depth, and
+eviction policy on a representative trace and freezes the winner. We
+show this is the wrong abstraction for production traffic, which is
+non-stationary --- alternating between latency-sensitive interactive
+bursts and throughput-oriented batch phases whose optimal
+configurations are nearly disjoint (interactive: batch=4;
+batch: batch=32 with preemption disabled). On such workloads a per-model-tuned static
+configuration sacrifices 9--10\% throughput and inflates TTFT p99 by
+$\sim$8$\times$ (18,058~ms vs 2,199~ms on TinyLlama), and a naive
+reactive autotuner does worse than static (18.9\% vs 16.2\% oracle gap)
+by thrashing without regime structure. We present CARL, a
+contextual-bandit scheduler that re-selects the serving operating point
+online as the regime shifts. CARL reaches 108.2~$\pm$~3.4\% of a
+per-model-tuned static best across two model families with zero
+retuning (real-GPU, +10.6\% TinyLlama, +5.8\% Qwen2), and its LinUCB
+policy closes the per-regime oracle gap to 0.45\% versus 16.2\% for
+static. Crucially, we isolate where this gain comes from: across every
+stationary single-regime workload CARL is statistically identical to
+the static best (Cohen's $d = 0$, $p = 1.0$), and the entire advantage
+appears only under regime change (NON-STATIONARY $d = 23.2$,
+$p = 2.3\times10^{-41}$, $n=30$). Because the serving engine is held
+fixed across both conditions, we conclude that adaptive online
+scheduling, rather than speculative decoding, is the primary driver of
+performance improvements under changing LLM-serving workloads. We
+further delimit the claim: on stable, sequential, or memory-bound
+traffic, online exploration is a net cost (CARL loses 5/5 stress
+workloads, up to $-$24.2\%), making regime non-stationarity the precise
+precondition for adaptive serving.
+\end{abstract}
+]
+
+% This command actually creates the footnote in the first column
+% listing the affiliations and the copyright notice. The command takes
+% one argument, which is text to display at the start of the footnote.
+\printAffiliationsAndNotice{}
+
+\input{sections/01-intro}
+\input{sections/02-background}
+\input{sections/03-system}
+\input{sections/04-evaluation}
+\input{sections/05-analysis}
+\input{sections/06-related}
+\input{sections/07-conclusion}
+
+\bibliography{bibliography}
+\bibliographystyle{mlsys2024}
+
+\end{document}

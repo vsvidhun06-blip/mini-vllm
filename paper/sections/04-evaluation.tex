@@ -1,0 +1,62 @@
+\section{Evaluation}
+% Argues: experimental setup and headline results --- real-GPU cross-model gains (108.2% of static-best, +10.6% TinyLlama, +5.8% Qwen2), throughput/TTFT wins on non-stationary traffic, and statistical validation (n=30 paired t-test, large effect sizes).
+
+\subsection{Design Scope and Limitations}
+\label{sec:limitations}
+
+Speculative decoding in our implementation is single-request only: the
+scheduler runs the greedy self-speculative (early-exit) path solely when
+exactly one request is in the decode phase and reverts to standard
+batched decoding whenever two or more requests decode concurrently, and
+the implemented draft/target decoder is not wired into the paged-cache
+scheduler --- so speculation is inactive across the batched regime and is
+held disabled in the experiments reported here.
+
+We quantify why speculation is disabled rather than merely descoped. On a
+single Tesla~T4, we swept the engine's self-speculative early-exit decoder
+over draft depth (exit layer $L\in\{4,6,8,10,12\}$) and draft length
+$K\in\{1,\dots,8\}$, serving one request at a time so the self-speculative
+path is active, with CUDA graphs off for both arms for an apples-to-apples
+comparison (Table~\ref{tab:specbreakeven}). Draft acceptance is low across
+the entire grid: it peaks at only $5.1\%$ (at $L{=}10$, $K{=}1$) and is
+effectively zero for the shallowest exits ($L{\le}6$). An analytical
+break-even model --- the per-token acceptance at which one speculative round
+recovers its own draft cost --- requires $19\%$--$83\%$ acceptance depending
+on $(L,K)$; even at the single most favorable operating point, the measured
+$5.1\%$ is nearly an order of magnitude below the $42.5\%$ needed just to
+break even there. Consistently, every one of the $25$ configurations is a net
+slowdown ($0.21\times$--$0.84\times$ the vanilla decode rate); none reaches
+break-even. This is why self-speculation contributes nothing on our
+model/hardware and is held disabled in the main experiments: at this model
+scale the early-exit draft is too weak to pay for the extra forward pass.
+
+We report this as a \emph{single-seed} characterization (seed~42, one T4 run,
+three prompts per cell) intended to establish the \emph{scope} of the design,
+not a statistically powered measurement. We therefore make no significance
+claim and attach no confidence intervals; the gap between achieved and
+required acceptance is qualitative and nearly an order of magnitude, which is
+what supports the design decision. Although this characterization uses a
+single seed, the measured acceptance rate remains nearly an order of
+magnitude below the analytical break-even threshold, making the qualitative
+conclusion unlikely to change under additional seeds.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Self-speculative decode speedup vs.\ vanilla by exit layer $L$ and
+draft length $K$ (TinyLlama-1.1B, single Tesla~T4, seed~42, three prompts per
+cell). All values $<1$: speculation is a net slowdown at every setting; none
+reaches break-even. Single-seed characterization.}
+\label{tab:specbreakeven}
+\begin{tabular}{lrrrrr}
+\toprule
+$L \backslash K$ & $K{=}1$ & $K{=}2$ & $K{=}4$ & $K{=}6$ & $K{=}8$ \\
+\midrule
+$L{=}4$  & 0.84 & 0.73 & 0.57 & 0.48 & 0.41 \\
+$L{=}6$  & 0.79 & 0.64 & 0.49 & 0.39 & 0.33 \\
+$L{=}8$  & 0.77 & 0.62 & 0.44 & 0.35 & 0.29 \\
+$L{=}10$ & 0.74 & 0.57 & 0.39 & 0.31 & 0.25 \\
+$L{=}12$ & 0.67 & 0.50 & 0.34 & 0.26 & 0.21 \\
+\bottomrule
+\end{tabular}
+\end{table}

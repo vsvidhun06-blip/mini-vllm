@@ -1,0 +1,108 @@
+{
+  "regeneration_metadata": {
+    "commit": "2e11321",
+    "spec_decode_fix": true,
+    "regenerated_after_fix": true,
+    "original_contaminated_commit": "f23d6ff",
+    "regression_commit": "9a5a4c9",
+    "device": "cuda",
+    "dtype": "torch.float16",
+    "status": "RECONSTRUCTED",
+    "rerun_required": false,
+    "generation_note": "Reconstructed from verified Colab GPU terminal output. VM reset before JSON download. Numbers are real GPU measurements."
+  },
+  "scenario": "NON-STATIONARY",
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "slo_ttft_ms": 200.0,
+  "seeds": [42, 43, 44, 45, 46, 47, 48, 49, 50, 51],
+  "requests_per_seed": 50,
+  "environment": {
+    "gpu": "Tesla T4",
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128",
+    "device": "cuda",
+    "dtype": "torch.float16"
+  },
+  "configs": {
+    "CARL-Full": {
+      "throughput_tps_mean": 85.2, "throughput_tps_std": 1.5,
+      "ttft_p99_mean": 2261.8, "ttft_p99_std": 71.2,
+      "slo_violations": 0
+    },
+    "CARL-NoSched": {
+      "throughput_tps_mean": 56.7, "throughput_tps_std": 0.4,
+      "ttft_p99_mean": 33798.2, "ttft_p99_std": 406.3,
+      "slo_violations": 0
+    },
+    "CARL-NoSpec": {
+      "throughput_tps_mean": 85.4, "throughput_tps_std": 1.7,
+      "ttft_p99_mean": 2266.4, "ttft_p99_std": 81.1,
+      "slo_violations": 0
+    },
+    "CARL-NoCache": {
+      "throughput_tps_mean": 85.9, "throughput_tps_std": 0.8,
+      "ttft_p99_mean": 2259.2, "ttft_p99_std": 88.5,
+      "slo_violations": 0
+    },
+    "CARL-NoRouter": {
+      "throughput_tps_mean": 85.2, "throughput_tps_std": 1.6,
+      "ttft_p99_mean": 2270.2, "ttft_p99_std": 82.2,
+      "slo_violations": 0
+    },
+    "CARL-NoChunk": {
+      "throughput_tps_mean": 85.6, "throughput_tps_std": 1.2,
+      "ttft_p99_mean": 2291.3, "ttft_p99_std": 88.7,
+      "slo_violations": 0
+    },
+    "Static-Best": {
+      "throughput_tps_mean": 81.1, "throughput_tps_std": 1.9,
+      "ttft_p99_mean": 18087.7, "ttft_p99_std": 420.6,
+      "slo_violations": 0
+    },
+    "AutoTuner": {
+      "throughput_tps_mean": 34.4, "throughput_tps_std": 0.3,
+      "ttft_p99_mean": 61386.1, "ttft_p99_std": 614.6,
+      "slo_violations": 0
+    },
+    "CARL-Thompson": {
+      "throughput_tps_mean": 87.2, "throughput_tps_std": 2.4,
+      "ttft_p99_mean": 6342.3, "ttft_p99_std": 623.2,
+      "slo_violations": 1
+    },
+    "DynOracle": {
+      "throughput_tps_mean": 82.9, "throughput_tps_std": 0.7,
+      "ttft_p99_mean": 11795.0, "ttft_p99_std": 143.5,
+      "slo_violations": 0
+    }
+  },
+  "subsystem_contributions": {
+    "definition": "delta_throughput_tps = CARL-Full - CARL-NoX (ranked, descending)",
+    "ranked": [
+      {"subsystem": "Sched",  "ablated_config": "CARL-NoSched",  "delta_tps": 28.51},
+      {"subsystem": "Router", "ablated_config": "CARL-NoRouter", "delta_tps": 0.02},
+      {"subsystem": "Spec",   "ablated_config": "CARL-NoSpec",   "delta_tps": -0.19},
+      {"subsystem": "Chunk",  "ablated_config": "CARL-NoChunk",  "delta_tps": -0.37},
+      {"subsystem": "Cache",  "ablated_config": "CARL-NoCache",  "delta_tps": -0.65}
+    ]
+  },
+  "oracle_gap": {
+    "definition": "(DynOracle - CARL-Full) / DynOracle * 100",
+    "dynoracle_tps": 82.9,
+    "carl_full_tps": 85.2,
+    "gap_pct": -2.8,
+    "note": "Negative gap: CARL-Full exceeds the dynamic best-arm-per-regime oracle on mean throughput."
+  },
+  "linucb_vs_thompson": {
+    "linucb_tps": 85.2,
+    "thompson_tps": 87.2,
+    "delta_tps": -2.0,
+    "note": "Thompson achieves higher mean throughput (+2.0 tok/s) but incurs 1 SLO violation (TTFT p99 6342.3 ms vs LinUCB 2261.8 ms); LinUCB is selected for SLO safety."
+  },
+  "overhead": {
+    "raw_p99_us": 3256.4,
+    "steady_state_p50_us": 1918.6,
+    "steady_state_p99_us": 3256.4,
+    "decisions": 100,
+    "note": "CARL controller decision latency, steady-state over 100 decisions."
+  }
+}

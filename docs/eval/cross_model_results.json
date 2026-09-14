@@ -1,0 +1,261 @@
+{
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "requests": 50,
+  "scenario": "NON-STATIONARY",
+  "methods": [
+    "CARL-Full",
+    "Static-Best",
+    "AutoTuner"
+  ],
+  "invariant": "Same CARLConfig DEFAULT_CONFIGS used for all models without modification.",
+  "environment": {
+    "gpu": "Tesla T4",
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128",
+    "python": "3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]",
+    "timestamp": "2026-06-26T17:27:07.980372"
+  },
+  "model_load_info": [
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "parameters_billion": 1.1,
+      "vram_gb": 2.2116,
+      "loaded": true,
+      "skip_reason": null
+    },
+    {
+      "model": "Qwen/Qwen2-0.5B-Instruct",
+      "parameters_billion": 0.494,
+      "vram_gb": 1.1894,
+      "loaded": true,
+      "skip_reason": null
+    },
+    {
+      "model": "google/gemma-2b-it",
+      "parameters_billion": 2.5,
+      "vram_gb": 0.0,
+      "loaded": false,
+      "skip_reason": "load failed: OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/google/gemma-2b-it.\n401 Client Error. (Request ID: Root=1-6a3ecc27-45af3189018540fd73f6069e;b32be0b4-b0b8-461b-8ffb-c25833b27904)\n\nCannot access gated repo for url https://huggingface.co/google/gemma-2b-it/resolve/main/config.json.\nAccess to model google/gemma-2b-it is restricted. You must have access to it and be authenticated to access it. Please log in."
+    }
+  ],
+  "models": [
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "short": "tinyllama",
+      "load_info": {
+        "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "parameters_billion": 1.1,
+        "vram_gb": 2.2116,
+        "loaded": true,
+        "skip_reason": null
+      },
+      "static_best_selection": {
+        "validation_throughputs": [
+          54.00898891385203,
+          85.09455316229386,
+          71.56935348419296,
+          83.48113455383881,
+          86.49875266173788,
+          58.89539151889441,
+          72.99901348911038,
+          58.56309752380808,
+          57.49342216326751,
+          58.33476335976781,
+          83.02065221054495,
+          72.67679148007193,
+          58.27515134914165,
+          85.79535965410264,
+          72.55455072205311,
+          72.41799128246045
+        ],
+        "winner": {
+          "max_batch_size": 16,
+          "chunk_size": 128,
+          "preemption_enabled": true,
+          "spec_k": 4,
+          "routing_threshold": 0.5,
+          "cache_affinity_weight": 0.2,
+          "eviction_threshold": 0.8,
+          "eviction_window": 32,
+          "use_cuda_graphs": true
+        },
+        "validation_seed": 999
+      },
+      "methods": {
+        "CARL-Full": {
+          "throughput_tps_mean": 89.27659685956775,
+          "throughput_tps_std": 0.8879860507861198,
+          "ttft_p99_mean": 2199.6471993334126,
+          "ttft_p99_std": 46.854212557839624,
+          "per_seed_throughput": {
+            "42": 88.25487671968999,
+            "43": 89.86219107977851,
+            "44": 89.71272277923474
+          }
+        },
+        "Static-Best": {
+          "throughput_tps_mean": 80.78053324074322,
+          "throughput_tps_std": 3.6373468756874066,
+          "ttft_p99_mean": 18057.748926666438,
+          "ttft_p99_std": 790.428474942869,
+          "per_seed_throughput": {
+            "42": 77.00693998344397,
+            "43": 84.2642919041395,
+            "44": 81.07036783464619
+          }
+        },
+        "AutoTuner": {
+          "throughput_tps_mean": 34.69489072290384,
+          "throughput_tps_std": 0.4658930696714268,
+          "ttft_p99_mean": 60873.84532066668,
+          "ttft_p99_std": 950.5386172790039,
+          "per_seed_throughput": {
+            "42": 34.16223402263068,
+            "43": 34.89591989916787,
+            "44": 35.02651824691299
+          }
+        }
+      },
+      "normalized_performance": {
+        "definition": "CARL-Full throughput / Static-Best throughput, per run",
+        "per_run": [
+          1.146063935778571,
+          1.0664326377062217,
+          1.1066031297923278
+        ],
+        "mean": 1.1063665677590402,
+        "std": 0.03981617610178718,
+        "n": 3,
+        "ci95": [
+          1.061310322977722,
+          1.1514228125403583
+        ]
+      },
+      "note": "CARL beats the per-model-tuned Static-Best by 10.6% by adapting across the regime shift mid-stream."
+    },
+    {
+      "model": "Qwen/Qwen2-0.5B-Instruct",
+      "short": "qwen2",
+      "load_info": {
+        "model": "Qwen/Qwen2-0.5B-Instruct",
+        "parameters_billion": 0.494,
+        "vram_gb": 1.1894,
+        "loaded": true,
+        "skip_reason": null
+      },
+      "static_best_selection": {
+        "validation_throughputs": [
+          54.117116906476795,
+          81.25330825125081,
+          68.18396300099636,
+          83.07823746040508,
+          82.32295635060366,
+          55.555008229077615,
+          69.49694202104827,
+          55.440797855771656,
+          53.63806920145102,
+          54.295772432123286,
+          78.48428597223757,
+          69.33199168691944,
+          55.08147187884066,
+          80.54399357622505,
+          68.98639102009376,
+          68.77977357758749
+        ],
+        "winner": {
+          "max_batch_size": 16,
+          "chunk_size": 512,
+          "preemption_enabled": true,
+          "spec_k": 4,
+          "routing_threshold": 0.7,
+          "cache_affinity_weight": 0.2,
+          "eviction_threshold": 0.7,
+          "eviction_window": 32,
+          "use_cuda_graphs": true
+        },
+        "validation_seed": 999
+      },
+      "methods": {
+        "CARL-Full": {
+          "throughput_tps_mean": 85.17412809671667,
+          "throughput_tps_std": 0.4351794480153528,
+          "ttft_p99_mean": 2306.7718136665767,
+          "ttft_p99_std": 79.97380222030631,
+          "per_seed_throughput": {
+            "42": 85.56059738123156,
+            "43": 85.25903419413946,
+            "44": 84.70275271477901
+          }
+        },
+        "Static-Best": {
+          "throughput_tps_mean": 80.49257885243408,
+          "throughput_tps_std": 0.6018858749436112,
+          "ttft_p99_mean": 18565.40738633339,
+          "ttft_p99_std": 104.29413355981961,
+          "per_seed_throughput": {
+            "42": 80.04669041537389,
+            "43": 81.17720936351427,
+            "44": 80.25383677841407
+          }
+        },
+        "AutoTuner": {
+          "throughput_tps_mean": 32.301365461496495,
+          "throughput_tps_std": 0.17695849015695644,
+          "ttft_p99_mean": 65551.12820733333,
+          "ttft_p99_std": 410.1848792588301,
+          "per_seed_throughput": {
+            "42": 32.17252254316043,
+            "43": 32.50313295822883,
+            "44": 32.228440883100234
+          }
+        }
+      },
+      "normalized_performance": {
+        "definition": "CARL-Full throughput / Static-Best throughput, per run",
+        "per_run": [
+          1.0688836345043775,
+          1.0502828917454732,
+          1.0554355544227583
+        ],
+        "mean": 1.0582006935575363,
+        "std": 0.009603718218572628,
+        "n": 3,
+        "ci95": [
+          1.0473330633320566,
+          1.069068323783016
+        ]
+      },
+      "note": "CARL beats the per-model-tuned Static-Best by 5.8% by adapting across the regime shift mid-stream."
+    },
+    {
+      "model": "google/gemma-2b-it",
+      "short": "gemma",
+      "load_info": {
+        "model": "google/gemma-2b-it",
+        "parameters_billion": 2.5,
+        "vram_gb": 0.0,
+        "loaded": false,
+        "skip_reason": "load failed: OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/google/gemma-2b-it.\n401 Client Error. (Request ID: Root=1-6a3ecc27-45af3189018540fd73f6069e;b32be0b4-b0b8-461b-8ffb-c25833b27904)\n\nCannot access gated repo for url https://huggingface.co/google/gemma-2b-it/resolve/main/config.json.\nAccess to model google/gemma-2b-it is restricted. You must have access to it and be authenticated to access it. Please log in."
+      },
+      "skipped": true
+    }
+  ],
+  "headline_aggregation": {
+    "definition": "average of per-model mean_normalized_performance, averaged across MODELS (not across runs)",
+    "loaded_models": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "Qwen/Qwen2-0.5B-Instruct"
+    ],
+    "per_model_mean_normalized_performance": {
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0": 1.1063665677590402,
+      "Qwen/Qwen2-0.5B-Instruct": 1.0582006935575363
+    },
+    "mean_normalized_performance_across_models": 1.0822836306582881,
+    "std_normalized_performance_across_models": 0.03405841626966157
+  },
+  "headline": "CARL achieves 108.2+/-3.4% of Static-Best across 2 model families (mean+/-std across 2 models, zero retuning, identical parameters)."
+}

@@ -1,0 +1,12 @@
+cycle,step,regime,arm,reward,oracle_reward,instant_regret,cumulative_regret,arm_changed,is_regime_transition,is_arm_switch,is_within_regime_switch,is_convergence_point,max_batch_size,chunk_size,preemption_enabled,spec_k,routing_threshold,cache_affinity_weight,eviction_threshold,eviction_window,use_cuda_graphs
+0,0,batch,0,0.8,0.5499999999999999,0.0,0.0,False,False,False,False,False,32,512,False,4,0.6,0.2,0.9,16,True
+1,10,interactive,0,0.8,0.6333333333333333,0.0,0.0,True,True,True,False,False,4,128,True,2,0.5,0.2,0.6,32,True
+2,20,interactive,0,0.8,0.6333333333333333,0.0,0.0,False,False,False,False,False,4,128,True,2,0.5,0.2,0.6,32,True
+3,30,interactive,0,0.3,0.6333333333333333,0.3333333333333333,0.3333333333333333,False,False,False,False,False,4,128,True,2,0.5,0.2,0.6,32,True
+4,40,batch,0,0.3,0.5499999999999999,0.24999999999999994,0.5833333333333333,True,True,True,False,False,32,512,False,4,0.6,0.2,0.9,16,True
+5,50,interactive,1,0.3,0.6333333333333333,0.3333333333333333,0.9166666666666665,True,True,True,False,False,2,128,True,2,0.5,0.2,0.6,32,True
+6,60,interactive,1,0.3,0.6333333333333333,0.3333333333333333,1.2499999999999998,False,False,False,False,False,2,128,True,2,0.5,0.2,0.6,32,True
+7,70,interactive,2,0.3,0.6333333333333333,0.3333333333333333,1.583333333333333,True,False,True,True,False,8,128,True,2,0.5,0.2,0.6,32,True
+8,80,interactive,2,0.3,0.6333333333333333,0.3333333333333333,1.9166666666666663,False,False,False,False,False,8,128,True,2,0.5,0.2,0.6,32,True
+9,90,interactive,3,0.3,0.6333333333333333,0.3333333333333333,2.2499999999999996,True,False,True,True,True,4,128,True,0,0.5,0.2,0.6,32,True
+10,100,interactive,3,0.3,0.6333333333333333,0.3333333333333333,2.583333333333333,False,False,False,False,False,4,128,True,0,0.5,0.2,0.6,32,True

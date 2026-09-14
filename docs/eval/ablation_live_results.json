@@ -1,0 +1,1299 @@
+{
+  "environment": {
+    "gpu": "Tesla T4",
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128",
+    "python": "3.13.15 (main, Aug  6 2026, 11:06:23) [GCC 11.4.0]",
+    "timestamp": "2026-09-02T12:19:16.968909"
+  },
+  "scenario": "NON-STATIONARY (1-25 INTERACTIVE prompt16-64/max32, 26-50 BATCH prompt128-256/max64)",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51
+  ],
+  "runs": 10,
+  "requests": 200,
+  "slo_ttft_ms": 200.0,
+  "validation_seed": 999,
+  "static_best_selection": {
+    "method": "latin_hypercube_16_candidates",
+    "search_space_name": "wide",
+    "search_space": {
+      "max_batch_size": [
+        2,
+        4,
+        8,
+        12,
+        16,
+        24,
+        32
+      ],
+      "spec_k": [
+        0,
+        2,
+        4
+      ],
+      "routing_threshold": [
+        0.3,
+        0.5,
+        0.7
+      ],
+      "eviction_threshold": [
+        0.7,
+        0.8,
+        0.9
+      ],
+      "chunk_size": [
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    "search_space_is_wide": true,
+    "candidates": [
+      {
+        "max_batch_size": 4,
+        "chunk_size": 128,
+        "preemption_enabled": true,
+        "spec_k": 0,
+        "routing_threshold": 0.3,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.7,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 24,
+        "chunk_size": 512,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 12,
+        "chunk_size": 64,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.3,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.7,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 24,
+        "chunk_size": 512,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.7,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.7,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 32,
+        "chunk_size": 128,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 8,
+        "chunk_size": 256,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.3,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 16,
+        "chunk_size": 512,
+        "preemption_enabled": true,
+        "spec_k": 0,
+        "routing_threshold": 0.7,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 2,
+        "chunk_size": 256,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 4,
+        "chunk_size": 64,
+        "preemption_enabled": true,
+        "spec_k": 0,
+        "routing_threshold": 0.7,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 2,
+        "chunk_size": 64,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.7,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 32,
+        "chunk_size": 64,
+        "preemption_enabled": true,
+        "spec_k": 0,
+        "routing_threshold": 0.3,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 16,
+        "chunk_size": 128,
+        "preemption_enabled": true,
+        "spec_k": 0,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.7,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 4,
+        "chunk_size": 256,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.7,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 24,
+        "chunk_size": 512,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.3,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 8,
+        "chunk_size": 128,
+        "preemption_enabled": true,
+        "spec_k": 4,
+        "routing_threshold": 0.5,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.9,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      },
+      {
+        "max_batch_size": 12,
+        "chunk_size": 256,
+        "preemption_enabled": true,
+        "spec_k": 2,
+        "routing_threshold": 0.7,
+        "cache_affinity_weight": 0.2,
+        "eviction_threshold": 0.8,
+        "eviction_window": 32,
+        "use_cuda_graphs": true
+      }
+    ],
+    "validation_throughputs": [
+      48.860365710431545,
+      93.4352533431468,
+      80.7276348555906,
+      92.77447229786067,
+      94.84061600722488,
+      78.35566253214428,
+      90.79575020439331,
+      46.85079332655311,
+      61.18445614837159,
+      44.94231554968237,
+      97.95840413248392,
+      88.58491004893446,
+      64.22879696639556,
+      94.93119364943568,
+      78.98921776477378,
+      87.48732734466816
+    ],
+    "winner": {
+      "max_batch_size": 32,
+      "chunk_size": 64,
+      "preemption_enabled": true,
+      "spec_k": 0,
+      "routing_threshold": 0.3,
+      "cache_affinity_weight": 0.2,
+      "eviction_threshold": 0.8,
+      "eviction_window": 32,
+      "use_cuda_graphs": true
+    },
+    "validation_seed": 999
+  },
+  "live_effective_configs": [
+    "AutoTuner",
+    "CARL-Expanded",
+    "CARL-Full",
+    "CARL-NoChunk",
+    "CARL-NoSched",
+    "CARL-Repaired",
+    "CARL-Thompson",
+    "DynOracle",
+    "Static-Best"
+  ],
+  "arm_sets": {
+    "restricted": {
+      "interactive": {
+        "n_arms": 6,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8
+        ],
+        "reachable_chunk_sizes": [
+          128
+        ],
+        "reachable_spec_k": [
+          0,
+          2,
+          4
+        ],
+        "reachable_eviction_thresholds": [
+          0.6
+        ]
+      },
+      "batch": {
+        "n_arms": 6,
+        "reachable_max_batch_sizes": [
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          384,
+          512
+        ],
+        "reachable_spec_k": [
+          2,
+          4
+        ],
+        "reachable_eviction_thresholds": [
+          0.85,
+          0.9,
+          0.95
+        ]
+      },
+      "burst": {
+        "n_arms": 6,
+        "reachable_max_batch_sizes": [
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          256,
+          512
+        ],
+        "reachable_spec_k": [
+          0
+        ],
+        "reachable_eviction_thresholds": [
+          0.85,
+          0.9,
+          0.95
+        ]
+      },
+      "cache_heavy": {
+        "n_arms": 6,
+        "reachable_max_batch_sizes": [
+          8,
+          16,
+          24
+        ],
+        "reachable_chunk_sizes": [
+          256
+        ],
+        "reachable_spec_k": [
+          0,
+          2
+        ],
+        "reachable_eviction_thresholds": [
+          0.8
+        ]
+      },
+      "long_context": {
+        "n_arms": 6,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8
+        ],
+        "reachable_chunk_sizes": [
+          384,
+          512
+        ],
+        "reachable_spec_k": [
+          0
+        ],
+        "reachable_eviction_thresholds": [
+          0.5,
+          0.6,
+          0.7
+        ]
+      }
+    },
+    "expanded": {
+      "interactive": {
+        "n_arms": 10,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8,
+          12,
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          128
+        ],
+        "reachable_spec_k": [
+          0,
+          2,
+          4
+        ],
+        "reachable_eviction_thresholds": [
+          0.6
+        ]
+      },
+      "batch": {
+        "n_arms": 10,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8,
+          12,
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          384,
+          512
+        ],
+        "reachable_spec_k": [
+          2,
+          4
+        ],
+        "reachable_eviction_thresholds": [
+          0.85,
+          0.9,
+          0.95
+        ]
+      },
+      "burst": {
+        "n_arms": 10,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8,
+          12,
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          256,
+          512
+        ],
+        "reachable_spec_k": [
+          0
+        ],
+        "reachable_eviction_thresholds": [
+          0.85,
+          0.9,
+          0.95
+        ]
+      },
+      "cache_heavy": {
+        "n_arms": 10,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8,
+          12,
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          256
+        ],
+        "reachable_spec_k": [
+          0,
+          2
+        ],
+        "reachable_eviction_thresholds": [
+          0.8
+        ]
+      },
+      "long_context": {
+        "n_arms": 10,
+        "reachable_max_batch_sizes": [
+          2,
+          4,
+          8,
+          12,
+          16,
+          24,
+          32
+        ],
+        "reachable_chunk_sizes": [
+          384,
+          512
+        ],
+        "reachable_spec_k": [
+          0
+        ],
+        "reachable_eviction_thresholds": [
+          0.5,
+          0.6,
+          0.7
+        ]
+      }
+    },
+    "expanded_batch_axis": [
+      2,
+      4,
+      8,
+      12,
+      16,
+      24,
+      32
+    ],
+    "note": "restricted = src.carl.config.all_arm_sets() as shipped; expanded = restricted plus one arm per unreachable max_batch_size, each being that regime's DEFAULT_CONFIG with only max_batch_size replaced. Restricted is a strict subset of expanded; no other knob gains a new value."
+  },
+  "config_arm_sets": {
+    "CARL-Full": "restricted",
+    "CARL-NoSched": "restricted",
+    "CARL-NoSpec": "restricted",
+    "CARL-NoCache": "restricted",
+    "CARL-NoRouter": "restricted",
+    "CARL-NoChunk": "restricted",
+    "Static-Best": "restricted",
+    "AutoTuner": "restricted",
+    "CARL-Thompson": "restricted",
+    "DynOracle": "restricted"
+  },
+  "config_bandit_cls": {
+    "CARL-Full": "LinUCBBandit",
+    "CARL-NoSched": "LinUCBBandit",
+    "CARL-NoSpec": "LinUCBBandit",
+    "CARL-NoCache": "LinUCBBandit",
+    "CARL-NoRouter": "LinUCBBandit",
+    "CARL-NoChunk": "LinUCBBandit",
+    "Static-Best": "LinUCBBandit",
+    "AutoTuner": "LinUCBBandit",
+    "CARL-Thompson": "LinUCBBandit",
+    "DynOracle": "LinUCBBandit",
+    "CARL-Repaired": "RepairedLinUCBBandit",
+    "CARL-Expanded": "RepairedLinUCBBandit"
+  },
+  "treatments": {
+    "CARL-Full": {
+      "learner": "LinUCBBandit",
+      "arm_set": "restricted",
+      "note": "the existing ablation config, unchanged"
+    },
+    "CARL-Repaired": {
+      "learner": "RepairedLinUCBBandit",
+      "arm_set": "restricted",
+      "note": "differs from CARL-Full in the LEARNER only"
+    },
+    "CARL-Expanded": {
+      "learner": "RepairedLinUCBBandit",
+      "arm_set": "expanded",
+      "note": "differs from CARL-Repaired in the ARM SET only"
+    }
+  },
+  "scope_note": "Single-model live harness: CARL wired to the scheduler only, speculation pinned off, no router, KV eviction inactive. Only NoSched/NoChunk differ from CARL-Full; NoSpec/NoCache/NoRouter measure ~= CARL-Full by design. See docs/eval/README.md.",
+  "configs": {
+    "CARL-Full": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 96.31213676292234,
+      "throughput_tps_std": 0.7750574246532734,
+      "ttft_p50_mean": 21084.03104200004,
+      "ttft_p50_std": 272.86357860709757,
+      "ttft_p99_mean": 61848.858891399985,
+      "ttft_p99_std": 707.2034774491179,
+      "tpot_p50_mean": 275.4190684082439,
+      "tpot_p50_std": 4.791612327317785,
+      "tpot_p99_mean": 330.09480298709633,
+      "tpot_p99_std": 6.899717411307709,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-Repaired": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "RepairedLinUCBBandit",
+      "throughput_tps_mean": 95.91059169685626,
+      "throughput_tps_std": 0.5912575340389061,
+      "ttft_p50_mean": 16766.90612450002,
+      "ttft_p50_std": 270.37555446691783,
+      "ttft_p99_mean": 73225.15947450002,
+      "ttft_p99_std": 565.3949970223978,
+      "tpot_p50_mean": 277.80574541270005,
+      "tpot_p50_std": 3.5543491699496728,
+      "tpot_p99_mean": 322.78224415104995,
+      "tpot_p99_std": 4.480893963053811,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-Expanded": {
+      "live_effective": true,
+      "arm_set": "expanded",
+      "bandit_cls": "RepairedLinUCBBandit",
+      "throughput_tps_mean": 93.6982111907217,
+      "throughput_tps_std": 0.8396072342742563,
+      "ttft_p50_mean": 24623.01265339988,
+      "ttft_p50_std": 239.7737500789708,
+      "ttft_p99_mean": 75553.20902259996,
+      "ttft_p99_std": 699.604816900162,
+      "tpot_p50_mean": 249.62945012944382,
+      "tpot_p50_std": 9.7638134518436,
+      "tpot_p99_mean": 319.2942274145387,
+      "tpot_p99_std": 3.4039977760088647,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-NoSched": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 63.568976156966755,
+      "throughput_tps_std": 0.47915367483619276,
+      "ttft_p50_mean": 40951.294405899986,
+      "ttft_p50_std": 323.95850374368445,
+      "ttft_p99_mean": 121369.95158520003,
+      "ttft_p99_std": 1047.9907008688522,
+      "tpot_p50_mean": 58.64045583691832,
+      "tpot_p50_std": 0.7997239619412557,
+      "tpot_p99_mean": 94.6382145483943,
+      "tpot_p99_std": 9.344543752315014,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-NoSpec": {
+      "live_effective": false,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 96.19221912681704,
+      "throughput_tps_std": 0.7362928533006671,
+      "ttft_p50_mean": 21112.884866700006,
+      "ttft_p50_std": 345.4617929292614,
+      "ttft_p99_mean": 61749.32104420004,
+      "ttft_p99_std": 509.41008132009017,
+      "tpot_p50_mean": 276.6874865887871,
+      "tpot_p50_std": 3.1644983195936973,
+      "tpot_p99_mean": 325.77217137562275,
+      "tpot_p99_std": 4.906200058545589,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-NoCache": {
+      "live_effective": false,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 96.07059384734933,
+      "throughput_tps_std": 0.3950475746917755,
+      "ttft_p50_mean": 21212.50185930012,
+      "ttft_p50_std": 289.2544907541583,
+      "ttft_p99_mean": 61863.804074000116,
+      "ttft_p99_std": 408.5683861238383,
+      "tpot_p50_mean": 275.3010192746005,
+      "tpot_p50_std": 4.644824915711016,
+      "tpot_p99_mean": 325.6524574883216,
+      "tpot_p99_std": 4.159022645649791,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-NoRouter": {
+      "live_effective": false,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 94.76067256238161,
+      "throughput_tps_std": 1.6689581724572171,
+      "ttft_p50_mean": 21366.37619150024,
+      "ttft_p50_std": 313.8280085674064,
+      "ttft_p99_mean": 62717.16410760001,
+      "ttft_p99_std": 1211.018608548864,
+      "tpot_p50_mean": 275.64314195822107,
+      "tpot_p50_std": 6.374636060711229,
+      "tpot_p99_mean": 328.33727470788097,
+      "tpot_p99_std": 5.102244128149936,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-NoChunk": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 93.97797942012333,
+      "throughput_tps_std": 1.492351073050065,
+      "ttft_p50_mean": 21537.30544959999,
+      "ttft_p50_std": 518.1441124396923,
+      "ttft_p99_mean": 63191.91275730009,
+      "ttft_p99_std": 1079.8633013120514,
+      "tpot_p50_mean": 276.719412326775,
+      "tpot_p50_std": 5.9933956741323735,
+      "tpot_p99_mean": 332.1035308173654,
+      "tpot_p99_std": 9.798282992704102,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "Static-Best": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 97.66710909308573,
+      "throughput_tps_std": 0.5030602063715415,
+      "ttft_p50_mean": 21199.73186119987,
+      "ttft_p50_std": 304.5443223148029,
+      "ttft_p99_mean": 71194.82571120006,
+      "ttft_p99_std": 745.7938542387398,
+      "tpot_p50_mean": 314.1104005213498,
+      "tpot_p50_std": 2.776268975417713,
+      "tpot_p99_mean": 329.35181633549234,
+      "tpot_p99_std": 4.1677045199869225,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "AutoTuner": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 32.01841118896518,
+      "throughput_tps_std": 0.2964111506976794,
+      "ttft_p50_mean": 77035.4194470001,
+      "ttft_p50_std": 588.3691100841735,
+      "ttft_p99_mean": 255365.48855569982,
+      "ttft_p99_std": 2556.2125866573856,
+      "tpot_p50_mean": 30.42292145816654,
+      "tpot_p50_std": 0.2959343117274001,
+      "tpot_p99_mean": 91.31506439678033,
+      "tpot_p99_std": 9.29940719542209,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "CARL-Thompson": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 97.51902238400893,
+      "throughput_tps_std": 1.2809205113581585,
+      "ttft_p50_mean": 22103.391902700605,
+      "ttft_p50_std": 1415.7507035691683,
+      "ttft_p99_mean": 67735.23841689984,
+      "ttft_p99_std": 5672.629193048543,
+      "tpot_p50_mean": 275.77249187148743,
+      "tpot_p50_std": 12.703464151208706,
+      "tpot_p99_mean": 322.862951646989,
+      "tpot_p99_std": 8.439671448187585,
+      "slo_rate_mean": 0.0,
+      "slo_rate_std": 0.0
+    },
+    "DynOracle": {
+      "live_effective": true,
+      "arm_set": "restricted",
+      "bandit_cls": "LinUCBBandit",
+      "throughput_tps_mean": 91.39961876840385,
+      "throughput_tps_std": 0.925114911043608,
+      "ttft_p50_mean": 27113.337085999956,
+      "ttft_p50_std": 321.09466816111836,
+      "ttft_p99_mean": 71441.11248679964,
+      "ttft_p99_std": 835.1022684151278,
+      "tpot_p50_mean": 288.1911342605839,
+      "tpot_p50_std": 11.305148537197063,
+      "tpot_p99_mean": 312.0734708714216,
+      "tpot_p99_std": 4.728788707192202,
+      "slo_rate_mean": 1.4,
+      "slo_rate_std": 0.9660917830792959
+    }
+  },
+  "configs_run": [
+    "CARL-Full",
+    "CARL-Repaired",
+    "CARL-Expanded",
+    "CARL-NoSched",
+    "CARL-NoSpec",
+    "CARL-NoCache",
+    "CARL-NoRouter",
+    "CARL-NoChunk",
+    "Static-Best",
+    "AutoTuner",
+    "CARL-Thompson",
+    "DynOracle"
+  ],
+  "carl_overhead": {
+    "p99_decision_latency_us": 4391.970000142464,
+    "p99_decision_latency_us_warmup_excluded": 4228.728000271076,
+    "p50_decision_latency_us_warmup_excluded": 2305.8400001900736,
+    "cold_start_us_per_run": [
+      14853.665999908117,
+      1729.3550001795666,
+      1461.5069999308616,
+      2269.8739999214013,
+      1480.2169998802128,
+      1740.8049998266506,
+      1538.6169998237165,
+      2121.048999924824,
+      2359.9639998792554,
+      2093.3949999744073
+    ],
+    "cold_start_p99_us": 14853.665999908117,
+    "mean_pct_of_inference": 0.09323407631794715,
+    "n_decisions": 390,
+    "n_decisions_per_run": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "n_decisions_warmup_excluded": 380,
+    "decision_us_per_run": [
+      [
+        14853.665999908117,
+        1806.288000125278,
+        1856.7199999779405,
+        3112.577999900168,
+        2920.7830000359536,
+        1994.1519999520096,
+        2782.7080000406568,
+        1857.2080000467395,
+        3190.8359999306413,
+        2558.805000035136,
+        2090.1569998841296,
+        2718.98300002249,
+        2408.6880000595556,
+        2732.955000055881,
+        2007.1679998636682,
+        2183.7650001543807,
+        2447.5389998315222,
+        2190.068999880168,
+        2694.4199998979457,
+        2527.4730001001444,
+        2342.6170000675484,
+        2441.562000058184,
+        2263.572999936514,
+        4065.656999955536,
+        2486.6390001534455,
+        1997.7059998836921,
+        1723.5569998774736,
+        4391.970000142464,
+        2210.73200009414,
+        2042.8420000371261,
+        1873.557999942932,
+        1812.5049998616305,
+        2210.998999998992,
+        1631.877999898279,
+        1543.0619998824113,
+        3617.804999976215,
+        1546.6800000467629,
+        1775.4779998995218,
+        1587.902999972357
+      ],
+      [
+        1729.3550001795666,
+        1615.9079998487869,
+        1915.533999863328,
+        2266.1169998627884,
+        2012.8219998696295,
+        2170.8300000682357,
+        2256.1060000043653,
+        2098.283000123047,
+        2592.9959999757557,
+        2453.364000075453,
+        2017.7720000447152,
+        2120.8830000887247,
+        2972.0059999363,
+        2145.7899999859364,
+        2095.802999974694,
+        2343.3149999618763,
+        1714.016999812884,
+        1562.6419999534846,
+        1976.3080001666822,
+        1591.8149999833986,
+        1861.995999888677,
+        1821.118000179922,
+        1997.9839998995885,
+        2646.1769998604723,
+        1754.1900001560862,
+        1808.5930000779626,
+        1860.2709997139755,
+        1888.1709997913276,
+        2064.154999970924,
+        1941.9660002313321,
+        1896.7940000038652,
+        1993.9750000048662,
+        2253.769999697397,
+        1912.6510001115093,
+        1614.6009998010413,
+        1700.498999980482,
+        2111.100000092847,
+        1790.1670003084291,
+        1837.9369998910988
+      ],
+      [
+        1461.5069999308616,
+        1718.9129998769204,
+        1970.6139996742422,
+        2916.859999913868,
+        2550.932999838551,
+        3031.0999995890597,
+        2395.001999957458,
+        2413.800999875093,
+        2865.7019997808675,
+        2534.572000058688,
+        2277.6800001338415,
+        2658.698000232107,
+        2481.652999904327,
+        2523.645000110264,
+        1639.5079996982531,
+        2429.4609997923544,
+        2318.8559998743585,
+        2294.4769998503034,
+        2390.686000126152,
+        1511.9059999051387,
+        2246.4129997388227,
+        2230.558000064775,
+        2542.651000112528,
+        2269.137999974191,
+        2243.483000256674,
+        2127.386999745795,
+        2068.4189998974034,
+        2532.3939998997957,
+        2310.471000328107,
+        2479.5489998723497,
+        2128.6780001901207,
+        2463.226999680046,
+        2391.4260000310605,
+        2431.6090002685087,
+        2223.535999746673,
+        2663.6539996616193,
+        2387.4590001469187,
+        2428.9760003739502,
+        2390.544999798294
+      ],
+      [
+        2269.8739999214013,
+        1935.3180000507564,
+        2191.5720003562456,
+        2274.352000313229,
+        2727.6969999547873,
+        2073.9910000884265,
+        2458.367999679467,
+        2507.3660003727127,
+        2973.4609997831285,
+        3192.9819997458253,
+        2020.2840000820288,
+        2677.5139999699604,
+        2568.8549999358656,
+        2711.589000227832,
+        2463.334999902145,
+        2462.9129998174903,
+        2346.8839999623015,
+        4540.181999800552,
+        2293.0219997761014,
+        2436.9850002585736,
+        2465.823999955319,
+        2357.5010000058683,
+        2261.9050000685093,
+        2325.9290001078625,
+        2363.0030000276747,
+        1652.5979999642004,
+        1705.5079997589928,
+        2615.972000057809,
+        2347.8650000470225,
+        2291.272999627836,
+        2327.646999674471,
+        2612.3170000573737,
+        2371.499000219046,
+        1743.4029996366007,
+        1852.9049998505798,
+        2083.888000015577,
+        1783.3229999268951,
+        1815.4740000682068,
+        1684.1589999785356
+      ],
+      [
+        1480.2169998802128,
+        17087.983999772405,
+        1856.2099999144266,
+        2117.1339999455085,
+        1983.038000162196,
+        2486.612999746285,
+        1789.5460000545427,
+        2159.0040000774025,
+        2655.1579999249952,
+        1763.2489998504752,
+        1949.7450002745609,
+        2568.532999703166,
+        2483.980000306474,
+        1904.42199982499,
+        2027.343000008841,
+        2218.729000105668,
+        1685.9029997249309,
+        1737.323999805085,
+        2146.4829997057677,
+        1744.4700001760793,
+        2160.905999971874,
+        2064.6279999709805,
+        1787.655000043742,
+        2739.663000284054,
+        1925.7190001553681,
+        1752.079999732814,
+        1868.88899997939,
+        1680.788999692595,
+        2492.2220000007655,
+        1698.9609998745436,
+        1716.294999823731,
+        1810.0050001521595,
+        1597.7220000422676,
+        1545.6659998562827,
+        2188.916999784851,
+        2069.5170001090446,
+        1996.214999962831,
+        1692.4810001910373,
+        1736.533999974199
+      ],
+      [
+        1740.8049998266506,
+        1872.0250000114902,
+        1974.1219998650195,
+        2782.6010000353563,
+        3289.373000370688,
+        2018.9900001241767,
+        2502.2780000654166,
+        2768.8569998645107,
+        2569.1490000099293,
+        2635.351000208175,
+        3116.084999874147,
+        2324.102000329731,
+        2392.072000020562,
+        2133.4680000109074,
+        1713.261000077182,
+        1702.7439998855698,
+        1769.7929997666506,
+        1749.0760001237504,
+        2313.0519998630916,
+        2339.388000109466,
+        2568.6550002319564,
+        2137.8780002123676,
+        2123.2639996924263,
+        2696.027000183676,
+        2145.016999747895,
+        2069.8210000773543,
+        1651.6059999958088,
+        2115.4339997337956,
+        2319.511999758106,
+        2056.588999948872,
+        1929.5420001981256,
+        2092.404999984865,
+        2159.9900001092465,
+        2359.2000002281566,
+        2198.439000039798,
+        2063.33000005543,
+        2889.1599999951723,
+        1844.0329999975802,
+        1647.4799999741663
+      ],
+      [
+        1538.6169998237165,
+        2146.5610002451285,
+        1918.2130004082865,
+        2629.1599997421145,
+        2498.7619999592425,
+        1944.547000221064,
+        2346.6120001103263,
+        2462.3350000183564,
+        4228.728000271076,
+        2613.659000417101,
+        2484.408000327676,
+        2611.548999993829,
+        2785.928999855969,
+        2702.2760000363633,
+        1686.8450002220925,
+        2421.102999960567,
+        2452.3100000806153,
+        2228.1980000116164,
+        2359.0400001012313,
+        2327.1669997484423,
+        2331.3020001296536,
+        2387.910000379634,
+        2330.8069999075087,
+        2965.7220002263784,
+        2341.5240002577775,
+        2195.191000282648,
+        1862.8419998094614,
+        2375.359000325261,
+        2391.9110003589594,
+        2396.5750001480046,
+        2176.654999857419,
+        2308.2949996933166,
+        2314.39200024397,
+        2275.211000323907,
+        2298.1249999247666,
+        2207.94200004093,
+        3061.6789999839966,
+        2310.3899998204724,
+        2260.80800030104
+      ],
+      [
+        2121.048999924824,
+        2036.1020001473662,
+        2551.389000018389,
+        2182.5700000590587,
+        2626.9340000908414,
+        2325.4580000866554,
+        2547.7549997958704,
+        2450.9750001016073,
+        2323.4450000018114,
+        2502.9430003087327,
+        1990.843999919889,
+        2559.2260003577394,
+        2961.3500000778004,
+        3308.488000129728,
+        1612.0939999382244,
+        2493.85600000096,
+        2367.4240001128055,
+        2518.624999993335,
+        2616.521999698307,
+        2406.0330001702823,
+        2379.04300001901,
+        2305.2650003592134,
+        2511.3759998021123,
+        2719.803999752912,
+        2365.3530001865875,
+        1930.8509999973467,
+        2108.9380002194957,
+        2480.656999978237,
+        3271.815000061906,
+        2609.223000035854,
+        2170.5699996346084,
+        2305.0529998727143,
+        3363.1609999247303,
+        1699.1759998745692,
+        1825.9399998896697,
+        1743.728999826999,
+        2044.56100027528,
+        1759.9369998606562,
+        1901.2839998140407
+      ],
+      [
+        2359.9639998792554,
+        2445.593000174995,
+        2898.3819997847604,
+        2072.4089999930584,
+        3062.153999962902,
+        2631.0939997529204,
+        2769.7250002347573,
+        2209.4249998190207,
+        2702.0030001949635,
+        3425.9630001542973,
+        2439.9710000579944,
+        2772.021000055247,
+        3178.730999934487,
+        2707.9259998572525,
+        1835.2629999753844,
+        2188.3620001972304,
+        8544.449000055465,
+        2169.2330001314986,
+        2014.1929999226704,
+        2256.2819999620842,
+        2188.459000080911,
+        2363.247000175761,
+        2325.1640000125917,
+        2777.3040001193294,
+        2250.8899996864784,
+        2263.7110000687244,
+        1916.5779999639199,
+        2220.5580003173964,
+        3576.4580002251023,
+        2292.2809998817684,
+        1997.4410001850629,
+        2344.4540001946734,
+        2973.7849999946775,
+        2391.06199978778,
+        2350.596999804111,
+        2420.045999770082,
+        2811.2089999012824,
+        2503.6460001501837,
+        2336.0219997812237
+      ],
+      [
+        2093.3949999744073,
+        2051.7520001703815,
+        2131.239999926038,
+        2253.648000078101,
+        2999.4729998179537,
+        2795.323000100325,
+        2353.677999963111,
+        3046.022000035009,
+        2679.8650001182978,
+        3241.180999793869,
+        2251.5769996971358,
+        2662.3159997143375,
+        2567.3059999462566,
+        2659.5140002427797,
+        2139.4089999375865,
+        2266.461000090203,
+        2439.6190001425566,
+        2450.593000048684,
+        2252.5540002789057,
+        2258.2100000363425,
+        2349.0620001211937,
+        2347.262000057526,
+        2590.190999853803,
+        2278.862999901321,
+        3033.6009999700764,
+        2305.8400001900736,
+        1855.5530000412546,
+        2370.9980000603537,
+        2698.904000226321,
+        2321.836000191979,
+        2205.080999829079,
+        2524.4640000892105,
+        2655.2489998721285,
+        2351.1869999310875,
+        2687.1659997596,
+        2275.2669997316843,
+        2426.3330001303984,
+        2996.8259996167035,
+        2348.5169999730715
+      ]
+    ],
+    "note": "p99_decision_latency_us is small-N (==max sample) and warmup-dominated; report the warmup_excluded steady-state figure as the headline and cold_start separately. See docs/eval/overhead_reconciliation.md."
+  },
+  "dynoracle": {
+    "label": "DynOracle (retrospective offline UB -- not deployable)",
+    "definition": "Best CARL arm per regime by mean recorded reward across all CARL-Full runs, applied statically with a boundary switch. Uses hindsight from completed runs.",
+    "arms_per_regime": {
+      "interactive": {
+        "best_arm": 0,
+        "mean_reward": 0.29999999999999993,
+        "config": {
+          "max_batch_size": 4,
+          "chunk_size": 128,
+          "preemption_enabled": true,
+          "spec_k": 2,
+          "routing_threshold": 0.5,
+          "cache_affinity_weight": 0.2,
+          "eviction_threshold": 0.6,
+          "eviction_window": 32,
+          "use_cuda_graphs": true
+        },
+        "per_arm_mean_reward": {
+          "0": 0.29999999999999993,
+          "1": 0.29999999999999993,
+          "2": 0.29999999999999993
+        }
+      },
+      "batch": {
+        "best_arm": 0,
+        "mean_reward": 0.29999999999999993,
+        "config": {
+          "max_batch_size": 32,
+          "chunk_size": 512,
+          "preemption_enabled": false,
+          "spec_k": 4,
+          "routing_threshold": 0.6,
+          "cache_affinity_weight": 0.2,
+          "eviction_threshold": 0.9,
+          "eviction_window": 16,
+          "use_cuda_graphs": true
+        },
+        "per_arm_mean_reward": {
+          "0": 0.29999999999999993,
+          "1": 0.29999999999999993,
+          "2": 0.29999999999999993,
+          "3": 0.29999999999999993,
+          "4": 0.29999999999999993,
+          "5": 0.29999999999999993
+        }
+      }
+    },
+    "source": "CARL-Full recorded rewards",
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ]
+  },
+  "subsystem_contributions": {
+    "Sched": 32.74316060595558,
+    "Chunk": 2.3341573427990028,
+    "Router": 1.551464200540721,
+    "Cache": 0.24154291557300667,
+    "Spec": 0.11991763610529915
+  },
+  "oracle_gap_pct": -5.374768582969955,
+  "linucb_vs_thompson": {
+    "carl_full_linucb_tput": 96.31213676292234,
+    "carl_thompson_tput": 97.51902238400893,
+    "linucb_minus_thompson": -1.2068856210865988
+  }
+}

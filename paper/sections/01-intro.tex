@@ -1,0 +1,110 @@
+\section{Introduction}
+% Argues: production LLM traffic is non-stationary, offline-frozen static configs lose 9-10% throughput and ~8x TTFT p99 under regime shift, and the central thesis that adaptive online scheduling (not speculative decoding) is the driver; states contributions.
+
+Large language model (LLM) serving systems are configured offline. An
+operator selects a representative trace, grid-searches over the
+scheduler's knobs --- maximum batch size, chunked-prefill size,
+speculative-decoding depth, KV-cache eviction policy --- and freezes the
+single configuration that maximizes validation throughput. This static
+configuration then serves all subsequent traffic. The premise is that a
+good operating point, once found, remains good. For a fixed workload it
+does.
+
+Production traffic, however, is not fixed. It is non-stationary: it
+alternates between latency-sensitive \emph{interactive} bursts and
+throughput-oriented \emph{batch} phases, and the two regimes have nearly
+disjoint optima. In our measurements the best interactive configuration
+uses a small batch (\texttt{max\_batch\_size=4}), while the best batch
+configuration uses a large batch (\texttt{max\_batch\_size=32}) with
+preemption disabled. No single static point can
+be both. A configuration tuned for aggregate throughput is therefore
+mis-sized for whichever regime it was not tuned for, and the cost is
+large rather than marginal. On non-stationary traffic a per-model-tuned
+static-best configuration sacrifices 9--10\% throughput against an
+adaptive policy, and its tail latency collapses: on TinyLlama the
+static-best TTFT p99 inflates by roughly $8\times$, from 2,199~ms to
+18,058~ms, because batch-sized batching settings starve interactive
+requests the moment the regime flips.
+
+The natural response is to tune online. Yet naive reactive autotuning
+makes the problem worse, not better. A hill-climbing autotuner that
+chases instantaneous reward without a model of the regime structure
+thrashes: it perturbs the configuration continuously, pays exploration
+cost on every step, and never recognizes that the workload has a small
+number of stable modes. Measured against a per-regime oracle, our
+\textsc{AutoTuner} baseline leaves an 18.9\% mean throughput gap ---
+\emph{wider} than the 16.2\% gap of the frozen static configuration it
+was meant to improve upon. Reacting to the wrong signal is worse than
+not reacting at all.
+
+The surprising finding of this paper is that the benefit of adaptation
+is \emph{entirely conditional on regime change}. On every stationary,
+single-regime workload we test --- short prompts, long prompts,
+interactive-only, batch-only --- our adaptive system is not merely close
+to the static-best but statistically indistinguishable from it: the mean
+throughput difference is exactly zero, with Cohen's $d = 0$ and
+$p = 1.0$. The entire advantage materializes only under
+non-stationarity, where it is enormous (paired $d = 23.2$,
+$p = 2.3\times10^{-41}$ over $n=30$ seeds). This dichotomy is
+diagnostic. Because the serving engine --- paged attention, continuous
+batching, and a fixed, disabled speculative-decoding setting --- is
+identical across both the stationary and the non-stationary
+conditions, the source of the gain cannot be any static mechanism. The
+only thing that differs between the conditions is whether the operating
+point is re-selected as the workload shifts. We conclude that the driver
+of performance under workload change is online re-selection of the
+configuration itself --- adaptive scheduling --- and not the underlying
+serving mechanisms that a static system already provides.
+
+We make this concrete with CARL, a contextual-bandit scheduler that
+treats each candidate serving configuration as an arm and re-selects the
+operating point online as the regime shifts. CARL observes lightweight
+workload features, applies a LinUCB contextual-bandit policy to choose a
+configuration, and reconfigures the unmodified serving engine
+accordingly; no part of the inference path is changed. Across two model
+families --- TinyLlama-1.1B and Qwen2-0.5B --- and with zero per-model
+retuning, CARL reaches $108.2 \pm 3.4\%$ of each model's own
+per-model-tuned static-best (+10.6\% on TinyLlama, +5.8\% on Qwen2) on
+real-GPU non-stationary traffic. Its LinUCB policy closes the per-regime
+oracle gap from the static configuration's 16.2\% to 0.45\% --- within
+noise of the oracle that knows the best arm for each regime in advance.
+The adaptation is well-behaved: CARL converges to the per-regime optimum
+deterministically at cycle~9 across all seeds, with a total cumulative
+regret of 2.583 against the oracle.
+
+We are equally explicit about where CARL does \emph{not} help. On stress
+workloads designed to expose it --- stable load, single-queue
+sequential serving, rapid oscillation, and memory pressure --- CARL ties
+or loses in all five cases, by as much as 24.2\% on rapid oscillation,
+where the regime changes faster than the bandit can amortize its
+exploration. This is not a caveat to be hidden but the defining boundary
+of the method: adaptation is a net benefit precisely when the workload
+is non-stationary at a timescale long enough to learn, and a net cost
+otherwise. Regime non-stationarity is both the problem CARL solves and
+the precondition for using it.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item We identify \emph{regime non-stationarity} as the root cause of
+    static-serving suboptimality, showing that the interactive and batch
+    regimes have nearly disjoint optima and that a single frozen
+    configuration loses 9--10\% throughput and $\sim$$8\times$ TTFT p99
+    under regime shift.
+  \item We show that adaptive online scheduling, rather than speculative
+    decoding or any other static serving mechanism, is the primary
+    driver of performance under workload change: the gain is zero on
+    stationary workloads ($d=0$, $p=1.0$) and appears only under regime
+    change ($d=23.2$, $p=2.3\times10^{-41}$) with the engine held fixed.
+  \item We present CARL, a contextual-bandit (LinUCB) controller that
+    re-selects the serving configuration per regime over an unmodified
+    engine and closes the per-regime oracle gap from 16.2\% to 0.45\%,
+    reaching 108.2\% of per-model-tuned static-best across two model
+    families with zero retuning.
+  \item We give a convergence analysis showing deterministic convergence
+    to the per-regime optimum (cycle~9 across all seeds) with bounded
+    cumulative regret (2.583 against the oracle).
+  \item We provide an honest failure-case characterization that bounds
+    the claim, showing CARL ties or loses on all five stationary or
+    fast-oscillating stress workloads (up to $-$24.2\%), and use it to
+    state the precise operating envelope of adaptive serving.
+\end{itemize}
