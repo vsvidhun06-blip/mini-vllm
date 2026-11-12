@@ -93,6 +93,9 @@ finding it.**
 
 ## 4. Does the gain survive realistic arrivals? — **OPEN (needs GPU)**
 
+*(Superseded 2026-10-26, kept as written: Poisson arrivals were run on a T4 in
+three complete campaigns — see the Addendum below and `docs/eval/DISCLOSURE_2026-10-26_subcritical_campaign_history.md`.)*
+
 Arrival-process support is implemented (`build_arrivals`: burst / Poisson /
 deterministic) and `ablation_live.py` now honours per-request offsets and records
 per-stage timestamps. Not yet run on hardware.
@@ -202,3 +205,186 @@ capture, then adaptation has real headroom and the negative result is confined t
 the simulation. Both are one script and a few GPU-hours away.
 
 **Run `batch_intervention.py` before writing anything.**
+
+---
+
+# Addendum — the final hardening, on real hardware
+
+Everything above this line is the **repaired simulation** on a CPU host. This
+addendum is not. It records the first decisive result measured on a **Tesla T4**,
+and what may and may not be said about it.
+
+**Frozen.** `final_hardening` is finished evidence. Nothing below is to be
+recomputed, re-run, softened or strengthened. A later experiment may *scope* it
+by measuring a different operating point; it may not overwrite it.
+
+Full per-claim detail — allowed wording, forbidden wording, effect sizes — is in
+`docs/paper/CLAIM_LEDGER.md` section **D**. This page records the *decision*.
+
+## The experiment
+
+| field | value |
+|---|---|
+| Artifact | `docs/eval/final_hardening_results.json` (produced on Colab; not in this working tree) |
+| Script | `scripts/eval/repair/final_hardening.py` |
+| Pre-registration | `docs/eval/PREREGISTRATION_final_hardening.md`, before the run |
+| Hardware | **Tesla T4**, TinyLlama-1.1B-Chat-v1.0, fp16 — not a simulation |
+| Seeds | 42–51 (n = 10, paired by seed), 200 requests per run |
+| Held-out seed | 999, used for the reward scales and both static baselines |
+| Workload | two-phase NON-STATIONARY, **saturated burst** (bulk dump), ρ ≫ 1 |
+| Live plane | `max_batch_size × chunk_size` = 7 × 4 = 28, exhaustive |
+| Live dimensions (probed) | `max_batch_size`, `chunk_size` |
+| Inactive (probed) | speculation, router, KV eviction, preemption, CUDA graphs |
+
+Two static baselines, selected from **one** held-out sweep by two different
+ranking functions, so every comparison has a baseline tuned for the metric it is
+judged on:
+
+* **Static-Tput** — `max_batch_size=32`, `chunk_size=512` (argmax throughput)
+* **Static-Utility** — `max_batch_size=8`, `chunk_size=256` (argmax `utility_v2`
+  under the frozen scales)
+
+## What it found
+
+| comparison | metric | paired Δ | 95% CI | paired *d* |
+|---|---|---:|---|---:|
+| CARL-Repaired − Static-Tput | `throughput_tps` | −3.3678 | [−3.6633, −3.0723] | −7.06395 |
+| CARL-Repaired − Static-Utility | end-of-run `utility_v2` | −0.0245 | [−0.0263, −0.0227] | −8.44215 |
+| CARL-Repaired − RuleOnly | `throughput_tps` | +3.7633 | [+3.2932, +4.2335] | +4.96133 |
+| CARL-Repaired − RuleOnly | end-of-run `utility_v2` | +0.0363 | [+0.0347, +0.0380] | — |
+| CARL-Expanded − CARL-Repaired | `throughput_tps` | −1.7956 | [−2.2754, −1.3158] | — |
+| CARL-Expanded − CARL-Repaired | end-of-run `utility_v2` | −0.0277 | [−0.0295, −0.0260] | — |
+
+Convergence, under the rule fixed before the run: **0/10 seeds** for RuleOnly,
+**0/10** for CARL-Repaired, **0/10** for CARL-Expanded.
+
+Cold start: every adaptive run withheld exactly **3** invalid-reward cycles, no
+learner update occurred on a withheld reward, `rewarded_arm = −1` on those
+cycles, and `withheld_after_first_valid = 0` everywhere. Pre-registered H5
+passed.
+
+## The decision
+
+**The central wording, and the only one permitted for the saturated point:**
+
+> At the saturated T4 operating point, adaptive reconfiguration is useful but
+> insufficient: CARL-Repaired improves throughput and end-of-run utility over
+> RuleOnly, but remains below objective-matched static configurations. Expanded
+> live configuration coverage further reduces both metrics.
+
+This **changes the verdict recorded above** in one specific way, and only that
+way. Section 1 of this document concluded from the simulation that CARL "ties
+RuleOnly to four decimal places". On real hardware, at a saturated operating
+point, it does not tie — it **wins** over RuleOnly by +3.7633 tok/s with a CI
+excluding zero. Learning does something. It simply does not do enough to reach
+an objective-matched static configuration.
+
+That is a materially better result for the paper than the simulation's, and a
+materially worse one than the original manuscript's. Both statements must be
+made together.
+
+### Two things the numbers do not say
+
+**1. Mean valid cycle reward is not end-of-run `utility_v2`.** The two are
+different estimators and neither may stand in for the other:
+
+* *mean valid cycle reward* — the mean over a controller's scored control
+  cycles; what the learner actually consumed. Defined only for controllers, and
+  never comparable against a static configuration, which has no control cycles.
+* *end-of-run `utility_v2`* — `utility_v2` of a run's end-of-run aggregates
+  under the frozen scales. Defined for every treatment, and the metric of the
+  Static-Utility comparison.
+
+The permitted phrasing for the utility baseline is exactly:
+
+> Static-Utility is selected using the same `utility_v2` function, weights, and
+> frozen scales used by CARL, and both systems are compared on end-of-run
+> `utility_v2`.
+
+It is **not** claimed to optimise the exact sequence of per-cycle rewards CARL
+consumed, and no document may say so.
+
+**2. This is one operating point.** Saturated burst arrivals at ρ ≫ 1, one T4,
+one 1.1B model, two live knobs. Saturation is precisely the regime in which
+`max_batch_size` binds hardest and a fixed configuration therefore has the most
+to offer. "Static tuning always wins" over-generalises the result; "online
+adaptation is useless" contradicts it. Neither may be written.
+
+## What could still change the verdict — and what could not
+
+**Could not.** Re-running the saturated point. It is finished.
+
+**Could.** The load axis. If the saturated result is an artefact of the regime
+in which the knob binds hardest, then the same comparisons at a comfortably
+sub-critical offered load should look materially different — not necessarily in
+sign, but in magnitude. That is registered as
+`docs/eval/PREREGISTRATION_subcritical_poisson.md` and implemented in
+`scripts/eval/repair/subcritical_poisson.py`.
+
+The operating point there is **derived, not chosen**: λ = 0.40·μ per phase, with
+μ read from `docs/eval/raw/repair/load_sweep_b7.json` for the execution path
+that actually runs (eager — no CUDA-graph runner is attached by
+`ablation_live._new_scheduler`):
+
+| phase | μ (req/s) | λ (rps) | 1/λ (s) |
+|---|---:|---:|---:|
+| interactive | 2.9613881136988742 | 1.1845552454795498 | 0.8442 |
+| batch | 1.4135291672527908 | 0.5654116669011163 | 1.7686 |
+
+The mechanistic hypothesis, registered before the run *(2026-10-26: before S1,
+in the September pre-registration; unchanged in October)*:
+
+> The sub-critical Poisson operating point will expose less
+> configuration-dependent throughput headroom than the saturated burst operating
+> point. Therefore the value available to online adaptation should be smaller
+> relative to its finite-horizon search and reconfiguration cost.
+
+That predicts a shrinking **effect size**, not a winner. Three outcomes were
+written down in advance and all three are informative:
+
+| case | outcome | what it would mean |
+|---|---|---|
+| A | CARL still loses to objective-matched static tuning | the limitation survives across offered-load regimes — the saturated result *widens* rather than narrows |
+| B | CARL becomes competitive with or beats an objective-matched static baseline | offered load is a **boundary condition**; the saturated result must be scoped to ρ ≫ 1 |
+| C | CARL beats RuleOnly but not static | adaptive behaviour is useful, but finite-horizon adaptation economics remain unfavourable |
+
+**Campaign history (2026-10-26).** The paragraph below was written when only
+the October campaign was known locally and is kept as written. The design was in
+fact executed to completion three times on the same seeds and arrivals: **S1**
+(2026-09-18) and **S2** (2026-09-19) under the September pre-registration, and
+**O** (2026-10-23) under the October amendments, which were made after S1/S2
+results had been viewed. Record: `docs/eval/DISCLOSURE_2026-10-26_subcritical_campaign_history.md`.
+
+**Outcome (2026-10-25).** The experiment ran to completion: 28 held-out units
+and 50 evaluation units on a T4, with one OOM interruption and a byte-verified
+resume. It is closed with reporting limitations, and no validity defect was
+demonstrated.
+* Observed case: **A** — CARL-Repaired remained below both objective-matched
+  static baselines.
+* The absolute throughput differences were small: −0.029 tok/s against
+  Static-Tput, roughly a 0.2 s later final completion.
+* H1 and H2 were supported as descriptive cross-regime comparisons.
+* Convergence was 0/10 for every controller.
+
+Numbers, evidence hashes and limitations: `docs/eval/CARL_REPAIR_STATUS.md`
+Phase 24 → *Run record and closeout*. Wording: `CLAIM_LEDGER.md` section E.
+
+**Outcome across the three campaigns (2026-10-26).** Case **A** in every
+campaign: CARL-Repaired's end-of-run `utility_v2` was below Static-Utility on
+10/10 seeds in S1, S2 and O, and its mean throughput was below Static-Tput in
+all three (−0.0764, −0.0520, −0.0286 tok/s; the S2 z interval includes zero).
+Against RuleOnly, utility was lower on 10/10 seeds in each campaign and mean
+throughput was lower in each (only O's interval excludes zero) — so case C
+("beats RuleOnly but not static") was **not** observed at this point.
+Expanded − Repaired changed sign across campaigns. Convergence 0/10 everywhere.
+Unresolved: why O was run, whether S1/S2 influenced the October amendments, and
+whether other attempts occurred.
+
+**After that experiment, the campaign stops** unless a genuine validity defect
+is found. *(2026-10-26: still the decision, now covering all three campaigns. No
+validity defect has been demonstrated in S1, S2 or O.)* Two operating points on a load axis is a boundary check, and a
+boundary check is what the scope sentence needs. It is not a load envelope, and
+no third point is required to say so honestly.
+
+**Do not write the paper from this addendum alone.** Read `CLAIM_LEDGER.md`
+sections D and E for the per-claim allowed and forbidden wording.

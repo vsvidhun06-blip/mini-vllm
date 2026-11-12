@@ -1,0 +1,6 @@
+# Frozen saturated evidence: verified by RAW-BYTE SHA256
+# (scripts/eval/repair/saturated_reference.py). core.autocrlf would rewrite
+# these LF files as CRLF on a Windows checkout and break the pinned digests, so
+# git must never translate their line endings.
+docs/eval/final_hardening_results.json -text
+docs/eval/raw/final_hardening/*.json -text

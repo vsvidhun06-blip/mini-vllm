@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import zipfile
 
 import pytest
 
@@ -169,17 +170,186 @@ def test_editing_a_source_file_changes_the_digest(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_the_archive_digest_matches_the_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(sp, "_REPO_ROOT", str(tmp_path))
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "m.py").write_text("y = 0\n", encoding="utf-8")
-    archive = tmp_path / "upload.zip"
-    archive.write_bytes(b"PK\x03\x04not-really-a-zip")
+def _mini_repo(root, *, crlf=False):
+    """A tiny tree with source, a test, and every required runtime data file."""
+    nl = "\r\n" if crlf else "\n"
+    files = {"src/m.py": f"y = 0{nl}", "scripts/eval/run.py": f"import m{nl}",
+             "tests/test_m.py": f"def test(): pass{nl}", "README.md": "readme\n"}
+    for rel in sp.ARCHIVE_REQUIRED_DATA_FILES:
+        files[rel] = "{}\n"
+    for rel, text in files.items():
+        full = root / rel
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_bytes(text.encode("utf-8"))
+    return files
 
-    block = sp.capture(str(archive))
-    assert block["archive"]["sha256"] == hashlib.sha256(
-        archive.read_bytes()).hexdigest()
-    assert block["archive"]["bytes"] == archive.stat().st_size
+
+def _zip(path, root, names=None, rename=lambda n: n):
+    with zipfile.ZipFile(path, "w") as z:
+        for d, _dirs, fs in os.walk(root):
+            for f in fs:
+                full = os.path.join(d, f)
+                rel = os.path.relpath(full, root).replace(os.sep, "/")
+                if names is None or rel in names:
+                    z.write(full, rename(rel))
+    return str(path)
+
+
+def test_the_archive_digest_matches_the_file(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    monkeypatch.setattr(sp, "_REPO_ROOT", str(repo))
+    archive = _zip(tmp_path / "upload.zip", repo)
+
+    block = sp.capture(archive)
+    with open(archive, "rb") as f:
+        assert block["archive"]["sha256"] == hashlib.sha256(f.read()).hexdigest()
+    assert block["archive"]["bytes"] == os.path.getsize(archive)
+    assert "archive_sha256" not in block, (
+        "the digest lives at archive.sha256; consumers must read it there")
+    assert block["schema"] == "source_provenance/2"
+    am = block["archive_manifest"]
+    assert {e["path"] for e in am["files"]} == {
+        "src/m.py", "scripts/eval/run.py", "tests/test_m.py",
+        *sp.ARCHIVE_REQUIRED_DATA_FILES}
+    assert block["archive_vs_working_tree"]["identical"] is True
+
+
+def test_a_file_that_is_not_a_zip_stops_the_capture(tmp_path, monkeypatch):
+    monkeypatch.setattr(sp, "_REPO_ROOT", str(tmp_path))
+    archive = tmp_path / "upload.zip"
+    archive.write_bytes(b"PK" + bytes([3, 4]) + b"not-really-a-zip")
+    with pytest.raises(SystemExit, match="not a ZIP"):
+        sp.capture(str(archive))
+
+
+@pytest.mark.parametrize("bad", ["backslash", "missing_data", "case_collision",
+                                 "dotdot"])
+def test_a_non_portable_or_incomplete_archive_is_refused(tmp_path, bad):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    z = tmp_path / "upload.zip"
+    if bad == "backslash":
+        # What PowerShell 5.1 Compress-Archive can produce; `unzip` on Colab
+        # would create a file literally named "src\\bad.py".
+        _zip(z, repo)
+        with zipfile.ZipFile(z, "a") as zz:
+            info = zipfile.ZipInfo("src/bad.py")
+            info.filename = "src\\bad.py"   # ZipInfo() would normalise it away
+            zz.writestr(info, "x = 1\n")
+        match = "backslash"
+    elif bad == "missing_data":
+        _zip(z, repo, names={"src/m.py"})
+        match = "missing required runtime data"
+    elif bad == "case_collision":
+        _zip(z, repo)
+        with zipfile.ZipFile(z, "a") as zz:
+            zz.writestr("SRC/M.py", "x = 1\n")
+        match = "collide"
+    else:
+        _zip(z, repo)
+        with zipfile.ZipFile(z, "a") as zz:
+            zz.writestr("../evil.py", "x = 1\n")
+        match = "escapes"
+    with pytest.raises(SystemExit, match=match):
+        sp.archive_manifest(str(z))
+
+
+def test_a_single_wrapping_folder_is_tolerated_and_recorded(tmp_path):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    z = _zip(tmp_path / "upload.zip", repo, rename=lambda n: "mini-vllm/" + n)
+    am = sp.archive_manifest(z)
+    assert am["root_prefix"] == "mini-vllm/"
+    assert "src/m.py" in {e["path"] for e in am["files"]}
+
+
+def test_line_endings_are_hashed_raw_and_reported_normalised(tmp_path):
+    """A Windows checkout packs CRLF; ZIP extraction keeps bytes verbatim, so
+    raw digests match on Colab. sha256_lf makes the CRLF/LF relation explicit
+    without ever being used to verify."""
+    crlf, lf = tmp_path / "crlf", tmp_path / "lf"
+    _mini_repo(crlf, crlf=True)
+    _mini_repo(lf, crlf=False)
+    side = {"archive": {"sha256": "a" * 64},
+            "archive_manifest": sp.archive_manifest(_zip(tmp_path / "w.zip", crlf))}
+    assert sp.verify_tree(side, str(crlf))["verified"] is True
+    converted = sp.verify_tree(side, str(lf))
+    assert converted["verified"] is False
+    assert "src/m.py" in converted["mismatched"]
+    a = {e["path"]: e for e in side["archive_manifest"]["files"]}
+    b = {e["path"]: e for e in sp.tree_manifest(str(lf))["files"]}
+    assert a["src/m.py"]["sha256"] != b["src/m.py"]["sha256"]
+    assert a["src/m.py"]["sha256_lf"] == b["src/m.py"]["sha256_lf"]
+
+
+def test_verification_reports_edits_deletions_and_additions_without_git(
+        tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    side = {"archive": {"sha256": "a" * 64},
+            "archive_manifest": sp.archive_manifest(_zip(tmp_path / "u.zip", repo))}
+    monkeypatch.setattr(sp, "_run_git_bytes", lambda *a: pytest.fail("used git"))
+    ok = sp.verify_tree(side, str(repo))
+    assert ok["verified"] is True
+    assert ok["executing_manifest_sha256"] == side["archive_manifest"]["manifest_sha256"]
+    (repo / "src" / "m.py").write_text("y = 1\n")
+    (repo / "tests" / "test_m.py").unlink()
+    (repo / "src" / "extra.py").write_text("z = 0\n")
+    bad = sp.verify_tree(side, str(repo))
+    assert bad["verified"] is False
+    assert (bad["mismatched"], bad["missing"], bad["unexpected"]) == (
+        ["src/m.py"], ["tests/test_m.py"], ["src/extra.py"])
+    assert bad["executing_manifest_sha256"] != ok["executing_manifest_sha256"]
+
+
+@pytest.mark.parametrize("bad", ["Z" * 64, "A" * 64, "a" * 63, "a" * 65, 64,
+                                 None, "g" + "a" * 63])
+def test_an_archive_digest_must_be_a_hexadecimal_sha256(tmp_path, bad):
+    """Length 64 is not enough: 64 'Z's is not a digest."""
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    side = {"archive": {"sha256": bad},
+            "archive_manifest": sp.archive_manifest(_zip(tmp_path / "u.zip", repo))}
+    rep = sp.verify_tree(side, str(repo))
+    assert rep["verified"] is False
+    assert rep["archive_sha256"] is None
+    assert any("well-formed archive.sha256" in p for p in rep["problems"])
+
+
+def test_an_uploaded_zip_is_verified_not_merely_asserted(tmp_path):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    z = _zip(tmp_path / "u.zip", repo)
+    side = {"archive": {"sha256": sp._sha256_file(z)},
+            "archive_manifest": sp.archive_manifest(z)}
+    asserted = sp.verify_tree(side, str(repo))
+    assert asserted["verified"] is True
+    assert asserted["archive_sha256_status"] == "asserted_by_sidecar"
+    assert asserted["uploaded_zip_sha256"] is None
+
+    verified = sp.verify_tree(side, str(repo), archive_path=z)
+    assert verified["verified"] is True
+    assert verified["archive_sha256_status"] == "verified_against_uploaded_zip"
+    assert verified["uploaded_zip_sha256"] == side["archive"]["sha256"]
+
+    other = tmp_path / "other.zip"
+    other.write_bytes(open(z, "rb").read() + b"\0")
+    mismatch = sp.verify_tree(side, str(repo), archive_path=str(other))
+    assert mismatch["verified"] is False
+    assert mismatch["archive_sha256_status"] == "mismatch"
+
+    missing = sp.verify_tree(side, str(repo), archive_path=str(tmp_path / "no.zip"))
+    assert missing["verified"] is False
+    assert missing["archive_sha256_status"] == "uploaded_zip_missing"
+
+
+def test_a_sidecar_without_an_archive_cannot_verify(tmp_path):
+    repo = tmp_path / "repo"
+    _mini_repo(repo)
+    for side in (None, {"present": False}, {"archive": None},
+                 {"archive": {"sha256": "a" * 64}, "archive_manifest": None}):
+        assert sp.verify_tree(side, str(repo))["verified"] is False
 
 
 def test_a_named_archive_that_does_not_exist_stops_the_capture(tmp_path, monkeypatch):
@@ -214,7 +384,8 @@ def test_the_cli_writes_valid_json(tmp_path):
         cwd=_REPO_ROOT, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
     block = json.loads(out.read_text(encoding="utf-8"))
-    assert block["schema"] == "source_provenance/1"
+    assert block["schema"] == "source_provenance/2"
+    assert block["archive"] is None and block["archive_manifest"] is None
     assert block["git_head"]
     assert block["source_manifest"]["n_files"] > 0
 

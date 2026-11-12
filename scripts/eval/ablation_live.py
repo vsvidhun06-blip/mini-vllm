@@ -270,7 +270,7 @@ def _new_scheduler(model) -> ContinuousBatchScheduler:
 
 
 def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
-           oracle_phase1=None) -> dict:
+           oracle_phase1=None, phase1_open_loop=False) -> dict:
     """Serve `specs` once; return per-request records, percentiles, overhead.
 
     controller : a CARLController wired to `sched` (CARL configs). We time each
@@ -278,6 +278,16 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
     tuner      : an AutoTuner (the AutoTuner baseline); observed every step.
     oracle_phase1 : config applied the instant the BATCH phase is injected
         (DynOracle / Oracle perfect-knowledge switch).
+    phase1_open_loop : ADDITIVE, default False, which reproduces the historical
+        behaviour BIT FOR BIT -- phase-1 requests are dumped in one block the
+        instant half of phase 0 has finished. That dump is a closed-loop
+        trigger: it makes the BATCH phase's arrival pattern a function of how
+        fast the engine drained phase 0, so a phase-specific arrival RATE
+        cannot be expressed under it. With this flag True, phase-1 requests are
+        instead released from their own `arrival_offset_s` exactly like phase 0,
+        and the regime shift is marked when the FIRST phase-1 request is
+        actually submitted. Set only by the sub-critical Poisson experiment,
+        which needs two different lambdas in one run.
     """
     # rid -> static metadata, plus integer id in submission order.
     meta = {}
@@ -321,9 +331,14 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
     # bulk-dump behaviour when every offset is 0). Anything with a positive
     # offset is held in `not_yet` and released by the step loop when due, which
     # is what turns this into an open-loop arrival process.
-    phase0_sorted = sorted(phase0, key=lambda s: getattr(s, "arrival_offset_s", 0.0))
-    not_yet = [s for s in phase0_sorted if getattr(s, "arrival_offset_s", 0.0) > 0.0]
-    for spec in [s for s in phase0_sorted if getattr(s, "arrival_offset_s", 0.0) <= 0.0]:
+    # With phase1_open_loop the phase-1 stream joins the SAME release queue, so
+    # both phases are governed by their own arrival offsets rather than one of
+    # them being triggered by the engine's own progress.
+    releasable = (phase0 + phase1) if phase1_open_loop else phase0
+    release_sorted = sorted(releasable,
+                            key=lambda s: getattr(s, "arrival_offset_s", 0.0))
+    not_yet = [s for s in release_sorted if getattr(s, "arrival_offset_s", 0.0) > 0.0]
+    for spec in [s for s in release_sorted if getattr(s, "arrival_offset_s", 0.0) <= 0.0]:
         _submit(spec)
 
     records: list[dict] = []
@@ -339,8 +354,31 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
     shift_step: int | None = None
     total_tokens = 0
     finished_count = 0
-    phase1_done = (len(phase1) == 0)
+    # Under phase1_open_loop there is no dump to perform, so the closed-loop
+    # trigger below is disarmed and the shift is recorded at first submission.
+    phase1_done = (len(phase1) == 0) or phase1_open_loop
     last_step_t = time.perf_counter()
+
+    def _mark_shift(spec) -> None:
+        """Record the regime shift the instant the first BATCH request arrives.
+
+        Under the legacy dump the shift is an event the harness causes; under an
+        open-loop stream it is an event the ARRIVAL PROCESS causes, so it is
+        read off the stream rather than scheduled.
+        """
+        nonlocal shift_t, shift_step
+        if spec.phase != 1 or shift_t is not None:
+            return
+        shift_t = time.perf_counter() - t0
+        shift_step = sched._step_idx
+        if oracle_phase1 is not None:
+            _apply_sched(sched, oracle_phase1)
+
+    if phase1_open_loop:
+        for spec in release_sorted:
+            if spec.rid in submit_time and spec.phase == 1:
+                _mark_shift(spec)
+                break
 
     while sched.has_work() or not_yet:
         # Release every arrival that has come due. Done BEFORE step() so a
@@ -349,7 +387,10 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
         if not_yet:
             elapsed = time.perf_counter() - t0
             while not_yet and not_yet[0].arrival_offset_s <= elapsed:
-                _submit(not_yet.pop(0))
+                _due = not_yet.pop(0)
+                _submit(_due)
+                if phase1_open_loop:
+                    _mark_shift(_due)
             if not sched.has_work() and not_yet:
                 # Genuinely idle: the engine has drained and the next request has
                 # not arrived. Sleep until it does. This idle time COUNTS toward
@@ -447,6 +488,10 @@ def _serve(sched, specs, *, controller=None, tracker=None, tuner=None,
         "shift_t": shift_t,
         "shift_step": shift_step,
         "n_phase0": len(phase0),
+        "n_phase1": len(phase1),
+        # How the BATCH phase entered the run, recorded per run so a reader never
+        # has to infer the arrival regime from the caller.
+        "phase1_open_loop": bool(phase1_open_loop),
     }
 
 

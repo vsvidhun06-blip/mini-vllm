@@ -1,0 +1,5857 @@
+{
+  "config": "Static-Tput",
+  "seed": 50,
+  "throughput_tps": 96.33777178938932,
+  "ttft_p50_ms": 22568.96899200001,
+  "ttft_p99_ms": 73494.07673499991,
+  "tpot_p50_ms": 302.7580425806527,
+  "tpot_p99_ms": 328.7241557301593,
+  "slo_rate": 0.0,
+  "wall_s": 99.64938799900028,
+  "run_utility_v2": 0.3667484951088259,
+  "applied_config": {
+    "max_batch_size": 32,
+    "chunk_size": 512,
+    "preemption_enabled": true,
+    "spec_k": 2,
+    "routing_threshold": 0.5,
+    "cache_affinity_weight": 0.2,
+    "eviction_threshold": 0.8,
+    "eviction_window": 32,
+    "use_cuda_graphs": true
+  },
+  "requests": [
+    {
+      "request_id": 0,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1373.364242000207,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 2.6855999749386683e-05,
+        "queue_entry_s": 2.6855999749386683e-05,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1373.364242000207
+    },
+    {
+      "request_id": 1,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1372.0521059995008,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0013389920004556188,
+        "queue_entry_s": 0.0013389920004556188,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1372.0521059995008
+    },
+    {
+      "request_id": 2,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1372.026275999815,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0013648220001414302,
+        "queue_entry_s": 0.0013648220001414302,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1372.026275999815
+    },
+    {
+      "request_id": 3,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1372.0082640002147,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001382833999741706,
+        "queue_entry_s": 0.001382833999741706,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1372.0082640002147
+    },
+    {
+      "request_id": 4,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.9893400002547,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0014017579997016583,
+        "queue_entry_s": 0.0014017579997016583,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.9893400002547
+    },
+    {
+      "request_id": 5,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.9718249994912,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0014192730004651821,
+        "queue_entry_s": 0.0014192730004651821,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.9718249994912
+    },
+    {
+      "request_id": 6,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.9518729994888,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0014392250004675589,
+        "queue_entry_s": 0.0014392250004675589,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.9518729994888
+    },
+    {
+      "request_id": 7,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.9283210002686,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001462776999687776,
+        "queue_entry_s": 0.001462776999687776,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.9283210002686
+    },
+    {
+      "request_id": 8,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.9096899994838,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0014814080004725838,
+        "queue_entry_s": 0.0014814080004725838,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.9096899994838
+    },
+    {
+      "request_id": 9,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.8923509995875,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001498747000368894,
+        "queue_entry_s": 0.001498747000368894,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.8923509995875
+    },
+    {
+      "request_id": 10,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.8748869996489,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0015162110003075213,
+        "queue_entry_s": 0.0015162110003075213,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.8748869996489
+    },
+    {
+      "request_id": 11,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.8564609998793,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0015346370000770548,
+        "queue_entry_s": 0.0015346370000770548,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.8564609998793
+    },
+    {
+      "request_id": 12,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.8394759998773,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0015516220000790781,
+        "queue_entry_s": 0.0015516220000790781,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.8394759998773
+    },
+    {
+      "request_id": 13,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.8203910002558,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0015707069997006329,
+        "queue_entry_s": 0.0015707069997006329,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.8203910002558
+    },
+    {
+      "request_id": 14,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.801723000317,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0015893749996394035,
+        "queue_entry_s": 0.0015893749996394035,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.801723000317
+    },
+    {
+      "request_id": 15,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.7837189997226,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0016073790002337773,
+        "queue_entry_s": 0.0016073790002337773,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.7837189997226
+    },
+    {
+      "request_id": 16,
+      "prompt_len": 22,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.7662560002282,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0016248419997282326,
+        "queue_entry_s": 0.0016248419997282326,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.7662560002282
+    },
+    {
+      "request_id": 17,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.7486329996973,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001642465000259108,
+        "queue_entry_s": 0.001642465000259108,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.7486329996973
+    },
+    {
+      "request_id": 18,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.7306019998432,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0016604960001131985,
+        "queue_entry_s": 0.0016604960001131985,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.7306019998432
+    },
+    {
+      "request_id": 19,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.7121589997987,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0016789390001576976,
+        "queue_entry_s": 0.0016789390001576976,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.7121589997987
+    },
+    {
+      "request_id": 20,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6939139994793,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0016971840004771366,
+        "queue_entry_s": 0.0016971840004771366,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6939139994793
+    },
+    {
+      "request_id": 21,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6759809994983,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0017151170004581218,
+        "queue_entry_s": 0.0017151170004581218,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6759809994983
+    },
+    {
+      "request_id": 22,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6560189996017,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0017350790003547445,
+        "queue_entry_s": 0.0017350790003547445,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6560189996017
+    },
+    {
+      "request_id": 23,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6377629998533,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0017533350001031067,
+        "queue_entry_s": 0.0017533350001031067,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6377629998533
+    },
+    {
+      "request_id": 24,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6191299999991,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001771967999957269,
+        "queue_entry_s": 0.001771967999957269,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6191299999991
+    },
+    {
+      "request_id": 25,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.6011659998912,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0017899320000651642,
+        "queue_entry_s": 0.0017899320000651642,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.6011659998912
+    },
+    {
+      "request_id": 26,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.5832979996776,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001807800000278803,
+        "queue_entry_s": 0.001807800000278803,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.5832979996776
+    },
+    {
+      "request_id": 27,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.5653540002677,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0018257439996887115,
+        "queue_entry_s": 0.0018257439996887115,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.5653540002677
+    },
+    {
+      "request_id": 28,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.5471189998425,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0018439790001139045,
+        "queue_entry_s": 0.0018439790001139045,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.5471189998425
+    },
+    {
+      "request_id": 29,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.5292859997135,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.001861812000242935,
+        "queue_entry_s": 0.001861812000242935,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.5292859997135
+    },
+    {
+      "request_id": 30,
+      "prompt_len": 22,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.5101770003457,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0018809209996106802,
+        "queue_entry_s": 0.0018809209996106802,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.5101770003457
+    },
+    {
+      "request_id": 31,
+      "prompt_len": 30,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 1371.492448999561,
+      "tpot_ms": 302.7580425806527,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0018986490003953804,
+        "queue_entry_s": 0.0018986490003953804,
+        "prefill_start_s": null,
+        "first_token_s": 1.3733910979999564,
+        "finish_s": 10.758890418000192
+      },
+      "queue_wait_ms": 1371.492448999561
+    },
+    {
+      "request_id": 32,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.688979999504,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0019166760002917727,
+        "queue_entry_s": 0.0019166760002917727,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.688979999504
+    },
+    {
+      "request_id": 33,
+      "prompt_len": 30,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.670485999544,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0019351700002516736,
+        "queue_entry_s": 0.0019351700002516736,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.670485999544
+    },
+    {
+      "request_id": 34,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.652376999606,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0019532790001903777,
+        "queue_entry_s": 0.0019532790001903777,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.652376999606
+    },
+    {
+      "request_id": 35,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.634719999434,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0019709360003616894,
+        "queue_entry_s": 0.0019709360003616894,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.634719999434
+    },
+    {
+      "request_id": 36,
+      "prompt_len": 22,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.617292000024,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0019883639997715363,
+        "queue_entry_s": 0.0019883639997715363,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.617292000024
+    },
+    {
+      "request_id": 37,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.599998000107,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0020056579996889923,
+        "queue_entry_s": 0.0020056579996889923,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.599998000107
+    },
+    {
+      "request_id": 38,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.580710999893,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0020249449999028,
+        "queue_entry_s": 0.0020249449999028,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.580710999893
+    },
+    {
+      "request_id": 39,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.562319999299,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.00204333600049722,
+        "queue_entry_s": 0.00204333600049722,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.562319999299
+    },
+    {
+      "request_id": 40,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.544524000143,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0020611319996532984,
+        "queue_entry_s": 0.0020611319996532984,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.544524000143
+    },
+    {
+      "request_id": 41,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.526990000035,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0020786659997611423,
+        "queue_entry_s": 0.0020786659997611423,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.526990000035
+    },
+    {
+      "request_id": 42,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.509258999737,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002096397000059369,
+        "queue_entry_s": 0.002096397000059369,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.509258999737
+    },
+    {
+      "request_id": 43,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.475400999458,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002130255000338366,
+        "queue_entry_s": 0.002130255000338366,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.475400999458
+    },
+    {
+      "request_id": 44,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.457079999942,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0021485759998540743,
+        "queue_entry_s": 0.0021485759998540743,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.457079999942
+    },
+    {
+      "request_id": 45,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.439505999348,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002166150000448397,
+        "queue_entry_s": 0.002166150000448397,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.439505999348
+    },
+    {
+      "request_id": 46,
+      "prompt_len": 25,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.420862000065,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0021847939997314825,
+        "queue_entry_s": 0.0021847939997314825,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.420862000065
+    },
+    {
+      "request_id": 47,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.403015000084,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0022026409997124574,
+        "queue_entry_s": 0.0022026409997124574,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.403015000084
+    },
+    {
+      "request_id": 48,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.385377000166,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0022202789996299543,
+        "queue_entry_s": 0.0022202789996299543,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.385377000166
+    },
+    {
+      "request_id": 49,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.367816999424,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0022378390003723325,
+        "queue_entry_s": 0.0022378390003723325,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.367816999424
+    },
+    {
+      "request_id": 50,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.350108999337,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002255547000459046,
+        "queue_entry_s": 0.002255547000459046,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.350108999337
+    },
+    {
+      "request_id": 51,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.332944999864,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0022727109999323147,
+        "queue_entry_s": 0.0022727109999323147,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.332944999864
+    },
+    {
+      "request_id": 52,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.315459999692,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002290196000103606,
+        "queue_entry_s": 0.002290196000103606,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.315459999692
+    },
+    {
+      "request_id": 53,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.297495999584,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002308160000211501,
+        "queue_entry_s": 0.002308160000211501,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.297495999584
+    },
+    {
+      "request_id": 54,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.278530000069,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0023271259997272864,
+        "queue_entry_s": 0.0023271259997272864,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.278530000069
+    },
+    {
+      "request_id": 55,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.261039999496,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002344616000300448,
+        "queue_entry_s": 0.002344616000300448,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.261039999496
+    },
+    {
+      "request_id": 56,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.243754999938,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002361900999858335,
+        "queue_entry_s": 0.002361900999858335,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.243754999938
+    },
+    {
+      "request_id": 57,
+      "prompt_len": 21,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.225445999386,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002380210000410443,
+        "queue_entry_s": 0.002380210000410443,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.225445999386
+    },
+    {
+      "request_id": 58,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.207490000103,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002398165999693447,
+        "queue_entry_s": 0.002398165999693447,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.207490000103
+    },
+    {
+      "request_id": 59,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.190010999868,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0024156449999281904,
+        "queue_entry_s": 0.0024156449999281904,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.190010999868
+    },
+    {
+      "request_id": 60,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.172382999845,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0024332729999514413,
+        "queue_entry_s": 0.0024332729999514413,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.172382999845
+    },
+    {
+      "request_id": 61,
+      "prompt_len": 28,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.14738599999,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0024582699998063617,
+        "queue_entry_s": 0.0024582699998063617,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.14738599999
+    },
+    {
+      "request_id": 62,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.12711999967,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0024785360001260415,
+        "queue_entry_s": 0.0024785360001260415,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.12711999967
+    },
+    {
+      "request_id": 63,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 12240.109069000027,
+      "tpot_ms": 279.02042354840125,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002496586999768624,
+        "queue_entry_s": 0.002496586999768624,
+        "prefill_start_s": null,
+        "first_token_s": 12.242605655999796,
+        "finish_s": 20.892238786000235
+      },
+      "queue_wait_ms": 12240.109069000027
+    },
+    {
+      "request_id": 64,
+      "prompt_len": 17,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.451069000024,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.00251417199979187,
+        "queue_entry_s": 0.00251417199979187,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.451069000024
+    },
+    {
+      "request_id": 65,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.43355200019,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0025316889996247482,
+        "queue_entry_s": 0.0025316889996247482,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.43355200019
+    },
+    {
+      "request_id": 66,
+      "prompt_len": 17,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.415846000084,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0025493949997326126,
+        "queue_entry_s": 0.0025493949997326126,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.415846000084
+    },
+    {
+      "request_id": 67,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.398573999933,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0025666669998827274,
+        "queue_entry_s": 0.0025666669998827274,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.398573999933
+    },
+    {
+      "request_id": 68,
+      "prompt_len": 23,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.38072599951,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0025845150003078743,
+        "queue_entry_s": 0.0025845150003078743,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.38072599951
+    },
+    {
+      "request_id": 69,
+      "prompt_len": 24,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.363259000056,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002601981999760028,
+        "queue_entry_s": 0.002601981999760028,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.363259000056
+    },
+    {
+      "request_id": 70,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.343974999356,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0026212660004603094,
+        "queue_entry_s": 0.0026212660004603094,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.343974999356
+    },
+    {
+      "request_id": 71,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.326971999544,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0026382690002719755,
+        "queue_entry_s": 0.0026382690002719755,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.326971999544
+    },
+    {
+      "request_id": 72,
+      "prompt_len": 30,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.309921999775,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002655319000041345,
+        "queue_entry_s": 0.002655319000041345,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.309921999775
+    },
+    {
+      "request_id": 73,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.2921939999,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0026730469999165507,
+        "queue_entry_s": 0.0026730469999165507,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.2921939999
+    },
+    {
+      "request_id": 74,
+      "prompt_len": 28,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.27374099996,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0026914999998552958,
+        "queue_entry_s": 0.0026914999998552958,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.27374099996
+    },
+    {
+      "request_id": 75,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.25594799941,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0027092930004073423,
+        "queue_entry_s": 0.0027092930004073423,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.25594799941
+    },
+    {
+      "request_id": 76,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.238373999724,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.00272686700009217,
+        "queue_entry_s": 0.00272686700009217,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.238373999724
+    },
+    {
+      "request_id": 77,
+      "prompt_len": 28,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.221095999637,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0027441450001788326,
+        "queue_entry_s": 0.0027441450001788326,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.221095999637
+    },
+    {
+      "request_id": 78,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.202888999826,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002762351999990642,
+        "queue_entry_s": 0.002762351999990642,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.202888999826
+    },
+    {
+      "request_id": 79,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.185704999654,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0027795360001618974,
+        "queue_entry_s": 0.0027795360001618974,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.185704999654
+    },
+    {
+      "request_id": 80,
+      "prompt_len": 17,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.168498999716,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002796742000100494,
+        "queue_entry_s": 0.002796742000100494,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.168498999716
+    },
+    {
+      "request_id": 81,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.15183199999,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002813408999827516,
+        "queue_entry_s": 0.002813408999827516,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.15183199999
+    },
+    {
+      "request_id": 82,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.133633999627,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0028316070001892513,
+        "queue_entry_s": 0.0028316070001892513,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.133633999627
+    },
+    {
+      "request_id": 83,
+      "prompt_len": 30,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.11604800007,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0028491929997471743,
+        "queue_entry_s": 0.0028491929997471743,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.11604800007
+    },
+    {
+      "request_id": 84,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.09902299958,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0028662180002356763,
+        "queue_entry_s": 0.0028662180002356763,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.09902299958
+    },
+    {
+      "request_id": 85,
+      "prompt_len": 25,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.081584999367,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002883656000449264,
+        "queue_entry_s": 0.002883656000449264,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.081584999367
+    },
+    {
+      "request_id": 86,
+      "prompt_len": 26,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.05868299964,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0029065580001770286,
+        "queue_entry_s": 0.0029065580001770286,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.05868299964
+    },
+    {
+      "request_id": 87,
+      "prompt_len": 27,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.039842000166,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002925398999650497,
+        "queue_entry_s": 0.002925398999650497,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.039842000166
+    },
+    {
+      "request_id": 88,
+      "prompt_len": 32,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.02118400012,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0029440569996950217,
+        "queue_entry_s": 0.0029440569996950217,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.02118400012
+    },
+    {
+      "request_id": 89,
+      "prompt_len": 31,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22569.0038799994,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0029613610004162183,
+        "queue_entry_s": 0.0029613610004162183,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22569.0038799994
+    },
+    {
+      "request_id": 90,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.986143000075,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002979097999741498,
+        "queue_entry_s": 0.002979097999741498,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.986143000075
+    },
+    {
+      "request_id": 91,
+      "prompt_len": 25,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.96899200001,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.002996248999806994,
+        "queue_entry_s": 0.002996248999806994,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.96899200001
+    },
+    {
+      "request_id": 92,
+      "prompt_len": 21,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.951557999753,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0030136830000628834,
+        "queue_entry_s": 0.0030136830000628834,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.951557999753
+    },
+    {
+      "request_id": 93,
+      "prompt_len": 29,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.934132999857,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.003031107999959204,
+        "queue_entry_s": 0.003031107999959204,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.934132999857
+    },
+    {
+      "request_id": 94,
+      "prompt_len": 22,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.915574999664,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.003049666000151774,
+        "queue_entry_s": 0.003049666000151774,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.915574999664
+    },
+    {
+      "request_id": 95,
+      "prompt_len": 19,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 22568.8980369996,
+      "tpot_ms": 293.6708790967685,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.003067204000217316,
+        "queue_entry_s": 0.003067204000217316,
+        "prefill_start_s": null,
+        "first_token_s": 22.571965240999816,
+        "finish_s": 31.675762492999638
+      },
+      "queue_wait_ms": 22568.8980369996
+    },
+    {
+      "request_id": 96,
+      "prompt_len": 18,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 32933.235255,
+      "tpot_ms": 310.5720176451629,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0030848890000925167,
+        "queue_entry_s": 0.0030848890000925167,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 42.56405269100014
+      },
+      "queue_wait_ms": 32933.235255
+    },
+    {
+      "request_id": 97,
+      "prompt_len": 16,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 32933.207426999616,
+      "tpot_ms": 310.5720176451629,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0031127170004765503,
+        "queue_entry_s": 0.0031127170004765503,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 42.56405269100014
+      },
+      "queue_wait_ms": 32933.207426999616
+    },
+    {
+      "request_id": 98,
+      "prompt_len": 21,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 32933.189164000396,
+      "tpot_ms": 310.5720176451629,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.0031309799996961374,
+        "queue_entry_s": 0.0031309799996961374,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 42.56405269100014
+      },
+      "queue_wait_ms": 32933.189164000396
+    },
+    {
+      "request_id": 99,
+      "prompt_len": 20,
+      "regime": "INTERACTIVE",
+      "tokens_generated": 32,
+      "ttft_ms": 32933.17175700031,
+      "tpot_ms": 310.5720176451629,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 0.003148386999782815,
+        "queue_entry_s": 0.003148386999782815,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 42.56405269100014
+      },
+      "queue_wait_ms": 32933.17175700031
+    },
+    {
+      "request_id": 100,
+      "prompt_len": 140,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12044.012094999744,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89230804900035,
+        "queue_entry_s": 20.89230804900035,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12044.012094999744
+    },
+    {
+      "request_id": 101,
+      "prompt_len": 164,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.960109000182,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89236003499991,
+        "queue_entry_s": 20.89236003499991,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.960109000182
+    },
+    {
+      "request_id": 102,
+      "prompt_len": 135,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.93626700039,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892383876999702,
+        "queue_entry_s": 20.892383876999702,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.93626700039
+    },
+    {
+      "request_id": 103,
+      "prompt_len": 207,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.915604999711,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89240453900038,
+        "queue_entry_s": 20.89240453900038,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.915604999711
+    },
+    {
+      "request_id": 104,
+      "prompt_len": 219,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.894147000174,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89242599699992,
+        "queue_entry_s": 20.89242599699992,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.894147000174
+    },
+    {
+      "request_id": 105,
+      "prompt_len": 132,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.874226000298,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892445917999794,
+        "queue_entry_s": 20.892445917999794,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.874226000298
+    },
+    {
+      "request_id": 106,
+      "prompt_len": 173,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.854733999979,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892465410000113,
+        "queue_entry_s": 20.892465410000113,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.854733999979
+    },
+    {
+      "request_id": 107,
+      "prompt_len": 256,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.835452000167,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892484691999925,
+        "queue_entry_s": 20.892484691999925,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.835452000167
+    },
+    {
+      "request_id": 108,
+      "prompt_len": 141,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.813072000376,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892507071999717,
+        "queue_entry_s": 20.892507071999717,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.813072000376
+    },
+    {
+      "request_id": 109,
+      "prompt_len": 189,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.79264399995,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892527500000142,
+        "queue_entry_s": 20.892527500000142,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.79264399995
+    },
+    {
+      "request_id": 110,
+      "prompt_len": 206,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.7730929998,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892547051000292,
+        "queue_entry_s": 20.892547051000292,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.7730929998
+    },
+    {
+      "request_id": 111,
+      "prompt_len": 134,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.753183999797,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892566960000295,
+        "queue_entry_s": 20.892566960000295,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.753183999797
+    },
+    {
+      "request_id": 112,
+      "prompt_len": 166,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.732295000154,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892587848999938,
+        "queue_entry_s": 20.892587848999938,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.732295000154
+    },
+    {
+      "request_id": 113,
+      "prompt_len": 254,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.71270899992,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892607435000173,
+        "queue_entry_s": 20.892607435000173,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.71270899992
+    },
+    {
+      "request_id": 114,
+      "prompt_len": 231,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.692369999917,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892627774000175,
+        "queue_entry_s": 20.892627774000175,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.692369999917
+    },
+    {
+      "request_id": 115,
+      "prompt_len": 238,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.672566999703,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89264757700039,
+        "queue_entry_s": 20.89264757700039,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.672566999703
+    },
+    {
+      "request_id": 116,
+      "prompt_len": 217,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.651128999954,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892669015000138,
+        "queue_entry_s": 20.892669015000138,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.651128999954
+    },
+    {
+      "request_id": 117,
+      "prompt_len": 167,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.632003999846,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892688140000246,
+        "queue_entry_s": 20.892688140000246,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.632003999846
+    },
+    {
+      "request_id": 118,
+      "prompt_len": 185,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.612170000415,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892707973999677,
+        "queue_entry_s": 20.892707973999677,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.612170000415
+    },
+    {
+      "request_id": 119,
+      "prompt_len": 134,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.592889999672,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89272725400042,
+        "queue_entry_s": 20.89272725400042,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.592889999672
+    },
+    {
+      "request_id": 120,
+      "prompt_len": 200,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.572411999776,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892747732000316,
+        "queue_entry_s": 20.892747732000316,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.572411999776
+    },
+    {
+      "request_id": 121,
+      "prompt_len": 213,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.551478000154,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892768665999938,
+        "queue_entry_s": 20.892768665999938,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.551478000154
+    },
+    {
+      "request_id": 122,
+      "prompt_len": 224,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.53154599994,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892788598000152,
+        "queue_entry_s": 20.892788598000152,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.53154599994
+    },
+    {
+      "request_id": 123,
+      "prompt_len": 211,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.511175000276,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892808968999816,
+        "queue_entry_s": 20.892808968999816,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.511175000276
+    },
+    {
+      "request_id": 124,
+      "prompt_len": 139,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12043.48988000038,
+      "tpot_ms": 316.08486552381186,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892830263999713,
+        "queue_entry_s": 20.892830263999713,
+        "prefill_start_s": null,
+        "first_token_s": 32.93632014400009,
+        "finish_s": 52.84966667200024
+      },
+      "queue_wait_ms": 12043.48988000038
+    },
+    {
+      "request_id": 125,
+      "prompt_len": 165,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12426.99268600063,
+      "tpot_ms": 327.504090158722,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89285007699982,
+        "queue_entry_s": 20.89285007699982,
+        "prefill_start_s": null,
+        "first_token_s": 33.31984276300045,
+        "finish_s": 53.95260044299994
+      },
+      "queue_wait_ms": 12426.99268600063
+    },
+    {
+      "request_id": 126,
+      "prompt_len": 250,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12426.972887000375,
+      "tpot_ms": 327.504090158722,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892869876000077,
+        "queue_entry_s": 20.892869876000077,
+        "prefill_start_s": null,
+        "first_token_s": 33.31984276300045,
+        "finish_s": 53.95260044299994
+      },
+      "queue_wait_ms": 12426.972887000375
+    },
+    {
+      "request_id": 127,
+      "prompt_len": 200,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 12426.95263099995,
+      "tpot_ms": 327.504090158722,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892890132000502,
+        "queue_entry_s": 20.892890132000502,
+        "prefill_start_s": null,
+        "first_token_s": 33.31984276300045,
+        "finish_s": 53.95260044299994
+      },
+      "queue_wait_ms": 12426.95263099995
+    },
+    {
+      "request_id": 128,
+      "prompt_len": 160,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 22086.561099999926,
+      "tpot_ms": 328.22994893651037,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892910716999722,
+        "queue_entry_s": 20.892910716999722,
+        "prefill_start_s": null,
+        "first_token_s": 42.97947181699965,
+        "finish_s": 63.6579585999998
+      },
+      "queue_wait_ms": 22086.561099999926
+    },
+    {
+      "request_id": 129,
+      "prompt_len": 157,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 22086.54080799988,
+      "tpot_ms": 328.22994893651037,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892931008999767,
+        "queue_entry_s": 20.892931008999767,
+        "prefill_start_s": null,
+        "first_token_s": 42.97947181699965,
+        "finish_s": 63.6579585999998
+      },
+      "queue_wait_ms": 22086.54080799988
+    },
+    {
+      "request_id": 130,
+      "prompt_len": 208,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 22086.521042999266,
+      "tpot_ms": 328.22994893651037,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.892950774000383,
+        "queue_entry_s": 20.892950774000383,
+        "prefill_start_s": null,
+        "first_token_s": 42.97947181699965,
+        "finish_s": 63.6579585999998
+      },
+      "queue_wait_ms": 22086.521042999266
+    },
+    {
+      "request_id": 131,
+      "prompt_len": 225,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 22086.501082999348,
+      "tpot_ms": 328.22994893651037,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8929707340003,
+        "queue_entry_s": 20.8929707340003,
+        "prefill_start_s": null,
+        "first_token_s": 42.97947181699965,
+        "finish_s": 63.6579585999998
+      },
+      "queue_wait_ms": 22086.501082999348
+    },
+    {
+      "request_id": 132,
+      "prompt_len": 193,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.60912399951,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89299131900043,
+        "queue_entry_s": 20.89299131900043,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.60912399951
+    },
+    {
+      "request_id": 133,
+      "prompt_len": 159,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.58170899976,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89301873400018,
+        "queue_entry_s": 20.89301873400018,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.58170899976
+    },
+    {
+      "request_id": 134,
+      "prompt_len": 153,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.56056899959,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89303987400035,
+        "queue_entry_s": 20.89303987400035,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.56056899959
+    },
+    {
+      "request_id": 135,
+      "prompt_len": 145,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.54151900005,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893058923999888,
+        "queue_entry_s": 20.893058923999888,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.54151900005
+    },
+    {
+      "request_id": 136,
+      "prompt_len": 135,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.52182799956,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893078615000377,
+        "queue_entry_s": 20.893078615000377,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.52182799956
+    },
+    {
+      "request_id": 137,
+      "prompt_len": 155,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.502248999706,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89309819400023,
+        "queue_entry_s": 20.89309819400023,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.502248999706
+    },
+    {
+      "request_id": 138,
+      "prompt_len": 204,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.46865799979,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89313178500015,
+        "queue_entry_s": 20.89313178500015,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.46865799979
+    },
+    {
+      "request_id": 139,
+      "prompt_len": 252,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.44908800029,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893151354999645,
+        "queue_entry_s": 20.893151354999645,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.44908800029
+    },
+    {
+      "request_id": 140,
+      "prompt_len": 247,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.42832100027,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89317212199967,
+        "queue_entry_s": 20.89317212199967,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.42832100027
+    },
+    {
+      "request_id": 141,
+      "prompt_len": 192,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.40853900029,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89319190399965,
+        "queue_entry_s": 20.89319190399965,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.40853900029
+    },
+    {
+      "request_id": 142,
+      "prompt_len": 203,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.38984800014,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8932105949998,
+        "queue_entry_s": 20.8932105949998,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.38984800014
+    },
+    {
+      "request_id": 143,
+      "prompt_len": 191,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.37075299971,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893229690000226,
+        "queue_entry_s": 20.893229690000226,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.37075299971
+    },
+    {
+      "request_id": 144,
+      "prompt_len": 195,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.35087499984,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8932495680001,
+        "queue_entry_s": 20.8932495680001,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.35087499984
+    },
+    {
+      "request_id": 145,
+      "prompt_len": 185,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.33142699996,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893269015999977,
+        "queue_entry_s": 20.893269015999977,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.33142699996
+    },
+    {
+      "request_id": 146,
+      "prompt_len": 178,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.31139600034,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893289046999598,
+        "queue_entry_s": 20.893289046999598,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.31139600034
+    },
+    {
+      "request_id": 147,
+      "prompt_len": 191,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.29107999964,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8933093630003,
+        "queue_entry_s": 20.8933093630003,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.29107999964
+    },
+    {
+      "request_id": 148,
+      "prompt_len": 204,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.271166000144,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893329276999793,
+        "queue_entry_s": 20.893329276999793,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.271166000144
+    },
+    {
+      "request_id": 149,
+      "prompt_len": 191,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.251802999825,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893348640000113,
+        "queue_entry_s": 20.893348640000113,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.251802999825
+    },
+    {
+      "request_id": 150,
+      "prompt_len": 140,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.23186899963,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893368574000306,
+        "queue_entry_s": 20.893368574000306,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.23186899963
+    },
+    {
+      "request_id": 151,
+      "prompt_len": 255,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.21220300024,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893388239999695,
+        "queue_entry_s": 20.893388239999695,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.21220300024
+    },
+    {
+      "request_id": 152,
+      "prompt_len": 175,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.19042599999,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89341001699995,
+        "queue_entry_s": 20.89341001699995,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.19042599999
+    },
+    {
+      "request_id": 153,
+      "prompt_len": 189,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.17173299986,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89342871000008,
+        "queue_entry_s": 20.89342871000008,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.17173299986
+    },
+    {
+      "request_id": 154,
+      "prompt_len": 157,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.1513090003,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89344913399964,
+        "queue_entry_s": 20.89344913399964,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.1513090003
+    },
+    {
+      "request_id": 155,
+      "prompt_len": 198,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.13246199998,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893467980999958,
+        "queue_entry_s": 20.893467980999958,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.13246199998
+    },
+    {
+      "request_id": 156,
+      "prompt_len": 225,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33059.111763000146,
+      "tpot_ms": 317.76971692064154,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89348867999979,
+        "queue_entry_s": 20.89348867999979,
+        "prefill_start_s": null,
+        "first_token_s": 53.95260044299994,
+        "finish_s": 73.97209260900036
+      },
+      "queue_wait_ms": 33059.111763000146
+    },
+    {
+      "request_id": 157,
+      "prompt_len": 128,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33451.22134400026,
+      "tpot_ms": 328.7241557301593,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893507824999688,
+        "queue_entry_s": 20.893507824999688,
+        "prefill_start_s": null,
+        "first_token_s": 54.34472916899995,
+        "finish_s": 75.05435097999998
+      },
+      "queue_wait_ms": 33451.22134400026
+    },
+    {
+      "request_id": 158,
+      "prompt_len": 200,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33451.20120399952,
+      "tpot_ms": 328.7241557301593,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89352796500043,
+        "queue_entry_s": 20.89352796500043,
+        "prefill_start_s": null,
+        "first_token_s": 54.34472916899995,
+        "finish_s": 75.05435097999998
+      },
+      "queue_wait_ms": 33451.20120399952
+    },
+    {
+      "request_id": 159,
+      "prompt_len": 153,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 33451.181722,
+      "tpot_ms": 328.7241557301593,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893547446999946,
+        "queue_entry_s": 20.893547446999946,
+        "prefill_start_s": null,
+        "first_token_s": 54.34472916899995,
+        "finish_s": 75.05435097999998
+      },
+      "queue_wait_ms": 33451.181722
+    },
+    {
+      "request_id": 160,
+      "prompt_len": 168,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 43203.59424099934,
+      "tpot_ms": 314.77547796825206,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8935677770005,
+        "queue_entry_s": 20.8935677770005,
+        "prefill_start_s": null,
+        "first_token_s": 64.09716201799984,
+        "finish_s": 83.92801712999972
+      },
+      "queue_wait_ms": 43203.59424099934
+    },
+    {
+      "request_id": 161,
+      "prompt_len": 239,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 43203.57298399995,
+      "tpot_ms": 314.77547796825206,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893589033999888,
+        "queue_entry_s": 20.893589033999888,
+        "prefill_start_s": null,
+        "first_token_s": 64.09716201799984,
+        "finish_s": 83.92801712999972
+      },
+      "queue_wait_ms": 43203.57298399995
+    },
+    {
+      "request_id": 162,
+      "prompt_len": 186,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 43203.55371599999,
+      "tpot_ms": 314.77547796825206,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893608301999848,
+        "queue_entry_s": 20.893608301999848,
+        "prefill_start_s": null,
+        "first_token_s": 64.09716201799984,
+        "finish_s": 83.92801712999972
+      },
+      "queue_wait_ms": 43203.55371599999
+    },
+    {
+      "request_id": 163,
+      "prompt_len": 252,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 43203.53379300013,
+      "tpot_ms": 314.77547796825206,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893628224999702,
+        "queue_entry_s": 20.893628224999702,
+        "prefill_start_s": null,
+        "first_token_s": 64.09716201799984,
+        "finish_s": 83.92801712999972
+      },
+      "queue_wait_ms": 43203.53379300013
+    },
+    {
+      "request_id": 164,
+      "prompt_len": 228,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.70279399992,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893648186000064,
+        "queue_entry_s": 20.893648186000064,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.70279399992
+    },
+    {
+      "request_id": 165,
+      "prompt_len": 140,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.682980000274,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893667999999707,
+        "queue_entry_s": 20.893667999999707,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.682980000274
+    },
+    {
+      "request_id": 166,
+      "prompt_len": 206,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.66360900004,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893687370999942,
+        "queue_entry_s": 20.893687370999942,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.66360900004
+    },
+    {
+      "request_id": 167,
+      "prompt_len": 254,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.64402000029,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89370695999969,
+        "queue_entry_s": 20.89370695999969,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.64402000029
+    },
+    {
+      "request_id": 168,
+      "prompt_len": 158,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.623566999675,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893727413000306,
+        "queue_entry_s": 20.893727413000306,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.623566999675
+    },
+    {
+      "request_id": 169,
+      "prompt_len": 168,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.60379600003,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89374718399995,
+        "queue_entry_s": 20.89374718399995,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.60379600003
+    },
+    {
+      "request_id": 170,
+      "prompt_len": 170,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.583032999966,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.893767947000015,
+        "queue_entry_s": 20.893767947000015,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.583032999966
+    },
+    {
+      "request_id": 171,
+      "prompt_len": 213,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54160.00852599973,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894342454000252,
+        "queue_entry_s": 20.894342454000252,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54160.00852599973
+    },
+    {
+      "request_id": 172,
+      "prompt_len": 178,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.98542299985,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89436555700013,
+        "queue_entry_s": 20.89436555700013,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.98542299985
+    },
+    {
+      "request_id": 173,
+      "prompt_len": 135,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.96472000006,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89438625999992,
+        "queue_entry_s": 20.89438625999992,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.96472000006
+    },
+    {
+      "request_id": 174,
+      "prompt_len": 187,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.945110999615,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894405869000366,
+        "queue_entry_s": 20.894405869000366,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.945110999615
+    },
+    {
+      "request_id": 175,
+      "prompt_len": 177,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.92554799959,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89442543200039,
+        "queue_entry_s": 20.89442543200039,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.92554799959
+    },
+    {
+      "request_id": 176,
+      "prompt_len": 254,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.906396000224,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894444583999757,
+        "queue_entry_s": 20.894444583999757,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.906396000224
+    },
+    {
+      "request_id": 177,
+      "prompt_len": 201,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.88707299948,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8944639070005,
+        "queue_entry_s": 20.8944639070005,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.88707299948
+    },
+    {
+      "request_id": 178,
+      "prompt_len": 247,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.867377999944,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894483602000037,
+        "queue_entry_s": 20.894483602000037,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.867377999944
+    },
+    {
+      "request_id": 179,
+      "prompt_len": 157,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.84709300028,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8945038869997,
+        "queue_entry_s": 20.8945038869997,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.84709300028
+    },
+    {
+      "request_id": 180,
+      "prompt_len": 183,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.82674800034,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89452423199964,
+        "queue_entry_s": 20.89452423199964,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.82674800034
+    },
+    {
+      "request_id": 181,
+      "prompt_len": 137,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.80695300004,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894544026999938,
+        "queue_entry_s": 20.894544026999938,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.80695300004
+    },
+    {
+      "request_id": 182,
+      "prompt_len": 219,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.7874299996,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894563550000385,
+        "queue_entry_s": 20.894563550000385,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.7874299996
+    },
+    {
+      "request_id": 183,
+      "prompt_len": 135,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.767864999594,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894583115000387,
+        "queue_entry_s": 20.894583115000387,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.767864999594
+    },
+    {
+      "request_id": 184,
+      "prompt_len": 177,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.74819999974,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89460278000024,
+        "queue_entry_s": 20.89460278000024,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.74819999974
+    },
+    {
+      "request_id": 185,
+      "prompt_len": 150,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.7291879998,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89462179200018,
+        "queue_entry_s": 20.89462179200018,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.7291879998
+    },
+    {
+      "request_id": 186,
+      "prompt_len": 185,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.70965299948,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.8946413270005,
+        "queue_entry_s": 20.8946413270005,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.70965299948
+    },
+    {
+      "request_id": 187,
+      "prompt_len": 165,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.690266000325,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894660713999656,
+        "queue_entry_s": 20.894660713999656,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.690266000325
+    },
+    {
+      "request_id": 188,
+      "prompt_len": 155,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54159.66891700009,
+      "tpot_ms": 303.08656784126515,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89468206299989,
+        "queue_entry_s": 20.89468206299989,
+        "prefill_start_s": null,
+        "first_token_s": 75.05435097999998,
+        "finish_s": 94.14880475399968
+      },
+      "queue_wait_ms": 54159.66891700009
+    },
+    {
+      "request_id": 189,
+      "prompt_len": 240,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54542.913046999274,
+      "tpot_ms": 300.8149143333434,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89470153900038,
+        "queue_entry_s": 20.89470153900038,
+        "prefill_start_s": null,
+        "first_token_s": 75.43761458599965,
+        "finish_s": 94.38895418900029
+      },
+      "queue_wait_ms": 54542.913046999274
+    },
+    {
+      "request_id": 190,
+      "prompt_len": 158,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54542.89384899948,
+      "tpot_ms": 300.8149143333434,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89472073700017,
+        "queue_entry_s": 20.89472073700017,
+        "prefill_start_s": null,
+        "first_token_s": 75.43761458599965,
+        "finish_s": 94.38895418900029
+      },
+      "queue_wait_ms": 54542.89384899948
+    },
+    {
+      "request_id": 191,
+      "prompt_len": 193,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 54542.87441199995,
+      "tpot_ms": 300.8149143333434,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894740173999708,
+        "queue_entry_s": 20.894740173999708,
+        "prefill_start_s": null,
+        "first_token_s": 75.43761458599965,
+        "finish_s": 94.38895418900029
+      },
+      "queue_wait_ms": 54542.87441199995
+    },
+    {
+      "request_id": 192,
+      "prompt_len": 255,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 63630.63955100006,
+      "tpot_ms": 203.7013035079283,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89475938800024,
+        "queue_entry_s": 20.89475938800024,
+        "prefill_start_s": null,
+        "first_token_s": 84.5253989390003,
+        "finish_s": 97.35858105999978
+      },
+      "queue_wait_ms": 63630.63955100006
+    },
+    {
+      "request_id": 193,
+      "prompt_len": 182,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 63630.62012200044,
+      "tpot_ms": 203.7013035079283,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89477881699986,
+        "queue_entry_s": 20.89477881699986,
+        "prefill_start_s": null,
+        "first_token_s": 84.5253989390003,
+        "finish_s": 97.35858105999978
+      },
+      "queue_wait_ms": 63630.62012200044
+    },
+    {
+      "request_id": 194,
+      "prompt_len": 171,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 63630.600378000054,
+      "tpot_ms": 203.7013035079283,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894798561000243,
+        "queue_entry_s": 20.894798561000243,
+        "prefill_start_s": null,
+        "first_token_s": 84.5253989390003,
+        "finish_s": 97.35858105999978
+      },
+      "queue_wait_ms": 63630.600378000054
+    },
+    {
+      "request_id": 195,
+      "prompt_len": 220,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 63630.58062800064,
+      "tpot_ms": 203.7013035079283,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894818310999653,
+        "queue_entry_s": 20.894818310999653,
+        "prefill_start_s": null,
+        "first_token_s": 84.5253989390003,
+        "finish_s": 97.35858105999978
+      },
+      "queue_wait_ms": 63630.58062800064
+    },
+    {
+      "request_id": 196,
+      "prompt_len": 227,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 73494.11526699987,
+      "tpot_ms": 83.4986427460333,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894838922000417,
+        "queue_entry_s": 20.894838922000417,
+        "prefill_start_s": null,
+        "first_token_s": 94.38895418900029,
+        "finish_s": 99.64936868200039
+      },
+      "queue_wait_ms": 73494.11526699987
+    },
+    {
+      "request_id": 197,
+      "prompt_len": 142,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 73494.09591099992,
+      "tpot_ms": 83.4986427460333,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894858278000356,
+        "queue_entry_s": 20.894858278000356,
+        "prefill_start_s": null,
+        "first_token_s": 94.38895418900029,
+        "finish_s": 99.64936868200039
+      },
+      "queue_wait_ms": 73494.09591099992
+    },
+    {
+      "request_id": 198,
+      "prompt_len": 154,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 73494.07673499991,
+      "tpot_ms": 83.4986427460333,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.89487745400038,
+        "queue_entry_s": 20.89487745400038,
+        "prefill_start_s": null,
+        "first_token_s": 94.38895418900029,
+        "finish_s": 99.64936868200039
+      },
+      "queue_wait_ms": 73494.07673499991
+    },
+    {
+      "request_id": 199,
+      "prompt_len": 149,
+      "regime": "BATCH",
+      "tokens_generated": 64,
+      "ttft_ms": 73494.05693000063,
+      "tpot_ms": 83.4986427460333,
+      "stage_timestamps": {
+        "arrival_target_s": 0.0,
+        "submit_s": 20.894897258999663,
+        "queue_entry_s": 20.894897258999663,
+        "prefill_start_s": null,
+        "first_token_s": 94.38895418900029,
+        "finish_s": 99.64936868200039
+      },
+      "queue_wait_ms": 73494.05693000063
+    }
+  ],
+  "step_log": [
+    {
+      "t": 1.3733910979999564,
+      "dt": 1.370224166999833,
+      "tokens": 64,
+      "active": 32,
+      "step": 1
+    },
+    {
+      "t": 1.6720566510002755,
+      "dt": 0.29866555300031905,
+      "tokens": 32,
+      "active": 32,
+      "step": 2
+    },
+    {
+      "t": 1.9583562079997137,
+      "dt": 0.2862995569994382,
+      "tokens": 32,
+      "active": 32,
+      "step": 3
+    },
+    {
+      "t": 2.2623796480002056,
+      "dt": 0.304023440000492,
+      "tokens": 32,
+      "active": 32,
+      "step": 4
+    },
+    {
+      "t": 2.562843923999935,
+      "dt": 0.3004642759997296,
+      "tokens": 32,
+      "active": 32,
+      "step": 5
+    },
+    {
+      "t": 2.8471686390003015,
+      "dt": 0.28432471500036627,
+      "tokens": 32,
+      "active": 32,
+      "step": 6
+    },
+    {
+      "t": 3.141769304999798,
+      "dt": 0.2946006659994964,
+      "tokens": 32,
+      "active": 32,
+      "step": 7
+    },
+    {
+      "t": 3.4252225629998065,
+      "dt": 0.28345325800000865,
+      "tokens": 32,
+      "active": 32,
+      "step": 8
+    },
+    {
+      "t": 3.725401743000475,
+      "dt": 0.30017918000066857,
+      "tokens": 32,
+      "active": 32,
+      "step": 9
+    },
+    {
+      "t": 4.009176628000205,
+      "dt": 0.2837748849997297,
+      "tokens": 32,
+      "active": 32,
+      "step": 10
+    },
+    {
+      "t": 4.300221995000356,
+      "dt": 0.2910453670001516,
+      "tokens": 32,
+      "active": 32,
+      "step": 11
+    },
+    {
+      "t": 4.593830869999692,
+      "dt": 0.29360887499933597,
+      "tokens": 32,
+      "active": 32,
+      "step": 12
+    },
+    {
+      "t": 4.874560625000413,
+      "dt": 0.2807297550007206,
+      "tokens": 32,
+      "active": 32,
+      "step": 13
+    },
+    {
+      "t": 5.161868148000394,
+      "dt": 0.2873075229999813,
+      "tokens": 32,
+      "active": 32,
+      "step": 14
+    },
+    {
+      "t": 5.44214577799994,
+      "dt": 0.28027762999954575,
+      "tokens": 32,
+      "active": 32,
+      "step": 15
+    },
+    {
+      "t": 5.737434020000364,
+      "dt": 0.29528824200042436,
+      "tokens": 32,
+      "active": 32,
+      "step": 16
+    },
+    {
+      "t": 6.022184630000083,
+      "dt": 0.284750609999719,
+      "tokens": 32,
+      "active": 32,
+      "step": 17
+    },
+    {
+      "t": 6.314514403999965,
+      "dt": 0.2923297739998816,
+      "tokens": 32,
+      "active": 32,
+      "step": 18
+    },
+    {
+      "t": 6.597758416000033,
+      "dt": 0.2832440120000683,
+      "tokens": 32,
+      "active": 32,
+      "step": 19
+    },
+    {
+      "t": 6.895821457000238,
+      "dt": 0.298063041000205,
+      "tokens": 32,
+      "active": 32,
+      "step": 20
+    },
+    {
+      "t": 7.189259574999596,
+      "dt": 0.29343811799935793,
+      "tokens": 32,
+      "active": 32,
+      "step": 21
+    },
+    {
+      "t": 7.47411641600047,
+      "dt": 0.28485684100087383,
+      "tokens": 32,
+      "active": 32,
+      "step": 22
+    },
+    {
+      "t": 7.772285705000286,
+      "dt": 0.29816928899981576,
+      "tokens": 32,
+      "active": 32,
+      "step": 23
+    },
+    {
+      "t": 8.061398785000165,
+      "dt": 0.2891130799998791,
+      "tokens": 32,
+      "active": 32,
+      "step": 24
+    },
+    {
+      "t": 8.34594701900005,
+      "dt": 0.28454823399988527,
+      "tokens": 32,
+      "active": 32,
+      "step": 25
+    },
+    {
+      "t": 8.683151762000307,
+      "dt": 0.3372047430002567,
+      "tokens": 32,
+      "active": 32,
+      "step": 26
+    },
+    {
+      "t": 9.094683280000027,
+      "dt": 0.41153151799971965,
+      "tokens": 32,
+      "active": 32,
+      "step": 27
+    },
+    {
+      "t": 9.488876170000367,
+      "dt": 0.3941928900003404,
+      "tokens": 32,
+      "active": 32,
+      "step": 28
+    },
+    {
+      "t": 9.886368397999831,
+      "dt": 0.3974922279994644,
+      "tokens": 32,
+      "active": 32,
+      "step": 29
+    },
+    {
+      "t": 10.329689209000207,
+      "dt": 0.4433208110003761,
+      "tokens": 32,
+      "active": 32,
+      "step": 30
+    },
+    {
+      "t": 10.758890418000192,
+      "dt": 0.4292012089999844,
+      "tokens": 32,
+      "active": 0,
+      "step": 31
+    },
+    {
+      "t": 12.242605655999796,
+      "dt": 1.4837152379996041,
+      "tokens": 64,
+      "active": 32,
+      "step": 32
+    },
+    {
+      "t": 12.528003993999846,
+      "dt": 0.28539833800005,
+      "tokens": 32,
+      "active": 32,
+      "step": 33
+    },
+    {
+      "t": 12.8071419959997,
+      "dt": 0.27913800199985417,
+      "tokens": 32,
+      "active": 32,
+      "step": 34
+    },
+    {
+      "t": 13.108248020000246,
+      "dt": 0.3011060240005463,
+      "tokens": 32,
+      "active": 32,
+      "step": 35
+    },
+    {
+      "t": 13.386526580999998,
+      "dt": 0.2782785609997518,
+      "tokens": 32,
+      "active": 32,
+      "step": 36
+    },
+    {
+      "t": 13.66815582900017,
+      "dt": 0.2816292480001721,
+      "tokens": 32,
+      "active": 32,
+      "step": 37
+    },
+    {
+      "t": 13.948074224000266,
+      "dt": 0.2799183950000952,
+      "tokens": 32,
+      "active": 32,
+      "step": 38
+    },
+    {
+      "t": 14.247573276999901,
+      "dt": 0.29949905299963575,
+      "tokens": 32,
+      "active": 32,
+      "step": 39
+    },
+    {
+      "t": 14.527131071999975,
+      "dt": 0.2795577950000734,
+      "tokens": 32,
+      "active": 32,
+      "step": 40
+    },
+    {
+      "t": 14.801515395000024,
+      "dt": 0.27438432300004933,
+      "tokens": 32,
+      "active": 32,
+      "step": 41
+    },
+    {
+      "t": 15.0973542669999,
+      "dt": 0.2958388719998766,
+      "tokens": 32,
+      "active": 32,
+      "step": 42
+    },
+    {
+      "t": 15.372657238000102,
+      "dt": 0.27530297100020107,
+      "tokens": 32,
+      "active": 32,
+      "step": 43
+    },
+    {
+      "t": 15.658164282000143,
+      "dt": 0.2855070440000418,
+      "tokens": 32,
+      "active": 32,
+      "step": 44
+    },
+    {
+      "t": 15.937110978999954,
+      "dt": 0.27894669699981023,
+      "tokens": 32,
+      "active": 32,
+      "step": 45
+    },
+    {
+      "t": 16.265159249000135,
+      "dt": 0.3280482700001812,
+      "tokens": 32,
+      "active": 32,
+      "step": 46
+    },
+    {
+      "t": 16.546868141999767,
+      "dt": 0.28170889299963164,
+      "tokens": 32,
+      "active": 32,
+      "step": 47
+    },
+    {
+      "t": 16.827035324999997,
+      "dt": 0.2801671830002306,
+      "tokens": 32,
+      "active": 32,
+      "step": 48
+    },
+    {
+      "t": 17.135243020000416,
+      "dt": 0.30820769500041933,
+      "tokens": 32,
+      "active": 32,
+      "step": 49
+    },
+    {
+      "t": 17.415614608000396,
+      "dt": 0.28037158799997997,
+      "tokens": 32,
+      "active": 32,
+      "step": 50
+    },
+    {
+      "t": 17.697941211999932,
+      "dt": 0.282326603999536,
+      "tokens": 32,
+      "active": 32,
+      "step": 51
+    },
+    {
+      "t": 17.97870493800019,
+      "dt": 0.28076372600025934,
+      "tokens": 32,
+      "active": 32,
+      "step": 52
+    },
+    {
+      "t": 18.287484606000362,
+      "dt": 0.3087796680001702,
+      "tokens": 32,
+      "active": 32,
+      "step": 53
+    },
+    {
+      "t": 18.578170894999857,
+      "dt": 0.29068628899949545,
+      "tokens": 32,
+      "active": 32,
+      "step": 54
+    },
+    {
+      "t": 18.867222883000068,
+      "dt": 0.28905198800021026,
+      "tokens": 32,
+      "active": 32,
+      "step": 55
+    },
+    {
+      "t": 19.16987645500012,
+      "dt": 0.3026535720000538,
+      "tokens": 32,
+      "active": 32,
+      "step": 56
+    },
+    {
+      "t": 19.463061166000443,
+      "dt": 0.29318471100032184,
+      "tokens": 32,
+      "active": 32,
+      "step": 57
+    },
+    {
+      "t": 19.74773739000011,
+      "dt": 0.28467622399966785,
+      "tokens": 32,
+      "active": 32,
+      "step": 58
+    },
+    {
+      "t": 20.03700541299986,
+      "dt": 0.2892680229997495,
+      "tokens": 32,
+      "active": 32,
+      "step": 59
+    },
+    {
+      "t": 20.332796003000112,
+      "dt": 0.29579059000025154,
+      "tokens": 32,
+      "active": 32,
+      "step": 60
+    },
+    {
+      "t": 20.614313791000313,
+      "dt": 0.2815177880002011,
+      "tokens": 32,
+      "active": 32,
+      "step": 61
+    },
+    {
+      "t": 20.892238786000235,
+      "dt": 0.2779249949999212,
+      "tokens": 32,
+      "active": 0,
+      "step": 62
+    },
+    {
+      "t": 22.571965240999816,
+      "dt": 1.6797264549995816,
+      "tokens": 64,
+      "active": 32,
+      "step": 63
+    },
+    {
+      "t": 22.99930018499981,
+      "dt": 0.4273349439999947,
+      "tokens": 32,
+      "active": 32,
+      "step": 64
+    },
+    {
+      "t": 23.428859587999796,
+      "dt": 0.42955940299998474,
+      "tokens": 32,
+      "active": 32,
+      "step": 65
+    },
+    {
+      "t": 23.83616108499973,
+      "dt": 0.4073014969999349,
+      "tokens": 32,
+      "active": 32,
+      "step": 66
+    },
+    {
+      "t": 24.136163561000103,
+      "dt": 0.30000247600037255,
+      "tokens": 32,
+      "active": 32,
+      "step": 67
+    },
+    {
+      "t": 24.435869629999615,
+      "dt": 0.29970606899951235,
+      "tokens": 32,
+      "active": 32,
+      "step": 68
+    },
+    {
+      "t": 24.720117744000163,
+      "dt": 0.2842481140005475,
+      "tokens": 32,
+      "active": 32,
+      "step": 69
+    },
+    {
+      "t": 24.998841270000412,
+      "dt": 0.27872352600024897,
+      "tokens": 32,
+      "active": 32,
+      "step": 70
+    },
+    {
+      "t": 25.290680127000087,
+      "dt": 0.29183885699967504,
+      "tokens": 32,
+      "active": 32,
+      "step": 71
+    },
+    {
+      "t": 25.588464763000047,
+      "dt": 0.2977846359999603,
+      "tokens": 32,
+      "active": 32,
+      "step": 72
+    },
+    {
+      "t": 25.873544576000313,
+      "dt": 0.28507981300026586,
+      "tokens": 32,
+      "active": 32,
+      "step": 73
+    },
+    {
+      "t": 26.164329404000455,
+      "dt": 0.2907848280001417,
+      "tokens": 32,
+      "active": 32,
+      "step": 74
+    },
+    {
+      "t": 26.44605452399992,
+      "dt": 0.28172511999946437,
+      "tokens": 32,
+      "active": 32,
+      "step": 75
+    },
+    {
+      "t": 26.745133534999695,
+      "dt": 0.2990790109997761,
+      "tokens": 32,
+      "active": 32,
+      "step": 76
+    },
+    {
+      "t": 27.02753538199977,
+      "dt": 0.28240184700007376,
+      "tokens": 32,
+      "active": 32,
+      "step": 77
+    },
+    {
+      "t": 27.31311214499965,
+      "dt": 0.2855767629998809,
+      "tokens": 32,
+      "active": 32,
+      "step": 78
+    },
+    {
+      "t": 27.61341090699989,
+      "dt": 0.30029876200023864,
+      "tokens": 32,
+      "active": 32,
+      "step": 79
+    },
+    {
+      "t": 27.895065036999767,
+      "dt": 0.28165412999987893,
+      "tokens": 32,
+      "active": 32,
+      "step": 80
+    },
+    {
+      "t": 28.184588240000267,
+      "dt": 0.28952320300049905,
+      "tokens": 32,
+      "active": 32,
+      "step": 81
+    },
+    {
+      "t": 28.462935300000026,
+      "dt": 0.27834705999975995,
+      "tokens": 32,
+      "active": 32,
+      "step": 82
+    },
+    {
+      "t": 28.757062001000122,
+      "dt": 0.29412670100009564,
+      "tokens": 32,
+      "active": 32,
+      "step": 83
+    },
+    {
+      "t": 29.041776418000154,
+      "dt": 0.28471441700003197,
+      "tokens": 32,
+      "active": 32,
+      "step": 84
+    },
+    {
+      "t": 29.322327244000007,
+      "dt": 0.28055082599985326,
+      "tokens": 32,
+      "active": 32,
+      "step": 85
+    },
+    {
+      "t": 29.61906581800031,
+      "dt": 0.296738574000301,
+      "tokens": 32,
+      "active": 32,
+      "step": 86
+    },
+    {
+      "t": 29.897754820000046,
+      "dt": 0.27868900199973723,
+      "tokens": 32,
+      "active": 32,
+      "step": 87
+    },
+    {
+      "t": 30.18963540799996,
+      "dt": 0.2918805879999127,
+      "tokens": 32,
+      "active": 32,
+      "step": 88
+    },
+    {
+      "t": 30.470225449999816,
+      "dt": 0.28059004199985793,
+      "tokens": 32,
+      "active": 32,
+      "step": 89
+    },
+    {
+      "t": 30.77110982999966,
+      "dt": 0.3008843799998431,
+      "tokens": 32,
+      "active": 32,
+      "step": 90
+    },
+    {
+      "t": 31.07168718000048,
+      "dt": 0.30057735000082175,
+      "tokens": 32,
+      "active": 32,
+      "step": 91
+    },
+    {
+      "t": 31.354024301999743,
+      "dt": 0.2823371219992623,
+      "tokens": 32,
+      "active": 32,
+      "step": 92
+    },
+    {
+      "t": 31.675762492999638,
+      "dt": 0.32173819099989487,
+      "tokens": 32,
+      "active": 0,
+      "step": 93
+    },
+    {
+      "t": 32.93632014400009,
+      "dt": 1.260557651000454,
+      "tokens": 58,
+      "active": 32,
+      "step": 94
+    },
+    {
+      "t": 33.31984276300045,
+      "dt": 0.38352261900035955,
+      "tokens": 35,
+      "active": 32,
+      "step": 95
+    },
+    {
+      "t": 33.60020685099971,
+      "dt": 0.28036408799925994,
+      "tokens": 32,
+      "active": 32,
+      "step": 96
+    },
+    {
+      "t": 34.015224493999995,
+      "dt": 0.415017643000283,
+      "tokens": 32,
+      "active": 32,
+      "step": 97
+    },
+    {
+      "t": 34.40816800700031,
+      "dt": 0.3929435130003185,
+      "tokens": 32,
+      "active": 32,
+      "step": 98
+    },
+    {
+      "t": 34.799592424000366,
+      "dt": 0.3914244170000529,
+      "tokens": 32,
+      "active": 32,
+      "step": 99
+    },
+    {
+      "t": 35.18478228700042,
+      "dt": 0.38518986300005054,
+      "tokens": 32,
+      "active": 32,
+      "step": 100
+    },
+    {
+      "t": 35.6173915899999,
+      "dt": 0.43260930299948086,
+      "tokens": 32,
+      "active": 32,
+      "step": 101
+    },
+    {
+      "t": 36.06787569300013,
+      "dt": 0.45048410300023534,
+      "tokens": 32,
+      "active": 32,
+      "step": 102
+    },
+    {
+      "t": 36.43587168100021,
+      "dt": 0.36799598800007516,
+      "tokens": 32,
+      "active": 32,
+      "step": 103
+    },
+    {
+      "t": 36.72290736800005,
+      "dt": 0.28703568699984316,
+      "tokens": 32,
+      "active": 32,
+      "step": 104
+    },
+    {
+      "t": 37.028714690000015,
+      "dt": 0.3058073219999642,
+      "tokens": 32,
+      "active": 32,
+      "step": 105
+    },
+    {
+      "t": 37.32355484300024,
+      "dt": 0.2948401530002229,
+      "tokens": 32,
+      "active": 32,
+      "step": 106
+    },
+    {
+      "t": 37.607933750000484,
+      "dt": 0.2843789070002458,
+      "tokens": 32,
+      "active": 32,
+      "step": 107
+    },
+    {
+      "t": 37.892829993000305,
+      "dt": 0.28489624299982097,
+      "tokens": 32,
+      "active": 32,
+      "step": 108
+    },
+    {
+      "t": 38.20402243300032,
+      "dt": 0.31119244000001345,
+      "tokens": 32,
+      "active": 32,
+      "step": 109
+    },
+    {
+      "t": 38.49029557199992,
+      "dt": 0.28627313899960427,
+      "tokens": 32,
+      "active": 32,
+      "step": 110
+    },
+    {
+      "t": 38.781455481000194,
+      "dt": 0.291159909000271,
+      "tokens": 32,
+      "active": 32,
+      "step": 111
+    },
+    {
+      "t": 39.08932141100013,
+      "dt": 0.30786592999993445,
+      "tokens": 32,
+      "active": 32,
+      "step": 112
+    },
+    {
+      "t": 39.371919553000225,
+      "dt": 0.28259814200009714,
+      "tokens": 32,
+      "active": 32,
+      "step": 113
+    },
+    {
+      "t": 39.65138243599995,
+      "dt": 0.27946288299972366,
+      "tokens": 32,
+      "active": 32,
+      "step": 114
+    },
+    {
+      "t": 39.92999812400012,
+      "dt": 0.27861568800017267,
+      "tokens": 32,
+      "active": 32,
+      "step": 115
+    },
+    {
+      "t": 40.231833040999845,
+      "dt": 0.30183491699972365,
+      "tokens": 32,
+      "active": 32,
+      "step": 116
+    },
+    {
+      "t": 40.514304197000456,
+      "dt": 0.2824711560006108,
+      "tokens": 32,
+      "active": 32,
+      "step": 117
+    },
+    {
+      "t": 40.795731789000456,
+      "dt": 0.281427592,
+      "tokens": 32,
+      "active": 32,
+      "step": 118
+    },
+    {
+      "t": 41.094887686999755,
+      "dt": 0.29915589799929876,
+      "tokens": 32,
+      "active": 32,
+      "step": 119
+    },
+    {
+      "t": 41.38426127100047,
+      "dt": 0.2893735840007139,
+      "tokens": 32,
+      "active": 32,
+      "step": 120
+    },
+    {
+      "t": 41.685182334000274,
+      "dt": 0.30092106299980514,
+      "tokens": 32,
+      "active": 32,
+      "step": 121
+    },
+    {
+      "t": 41.970770339999945,
+      "dt": 0.2855880059996707,
+      "tokens": 32,
+      "active": 32,
+      "step": 122
+    },
+    {
+      "t": 42.27779784199993,
+      "dt": 0.30702750199998263,
+      "tokens": 32,
+      "active": 32,
+      "step": 123
+    },
+    {
+      "t": 42.56405269100014,
+      "dt": 0.28625484900021547,
+      "tokens": 32,
+      "active": 28,
+      "step": 124
+    },
+    {
+      "t": 42.97947181699965,
+      "dt": 0.4154191259995059,
+      "tokens": 36,
+      "active": 32,
+      "step": 125
+    },
+    {
+      "t": 43.28656821200002,
+      "dt": 0.30709639500037156,
+      "tokens": 32,
+      "active": 32,
+      "step": 126
+    },
+    {
+      "t": 43.57073206899986,
+      "dt": 0.2841638569998395,
+      "tokens": 32,
+      "active": 32,
+      "step": 127
+    },
+    {
+      "t": 43.85557367100046,
+      "dt": 0.28484160200059705,
+      "tokens": 32,
+      "active": 32,
+      "step": 128
+    },
+    {
+      "t": 44.161786011000004,
+      "dt": 0.3062123399995471,
+      "tokens": 32,
+      "active": 32,
+      "step": 129
+    },
+    {
+      "t": 44.445113464000315,
+      "dt": 0.2833274530003109,
+      "tokens": 32,
+      "active": 32,
+      "step": 130
+    },
+    {
+      "t": 44.73181747499984,
+      "dt": 0.2867040109995287,
+      "tokens": 32,
+      "active": 32,
+      "step": 131
+    },
+    {
+      "t": 45.01285256600022,
+      "dt": 0.28103509100037627,
+      "tokens": 32,
+      "active": 32,
+      "step": 132
+    },
+    {
+      "t": 45.32135826499962,
+      "dt": 0.3085056989993973,
+      "tokens": 32,
+      "active": 32,
+      "step": 133
+    },
+    {
+      "t": 45.60385737300021,
+      "dt": 0.28249910800059297,
+      "tokens": 32,
+      "active": 32,
+      "step": 134
+    },
+    {
+      "t": 45.889022209999894,
+      "dt": 0.28516483699968376,
+      "tokens": 32,
+      "active": 32,
+      "step": 135
+    },
+    {
+      "t": 46.19431162500041,
+      "dt": 0.3052894150005159,
+      "tokens": 32,
+      "active": 32,
+      "step": 136
+    },
+    {
+      "t": 46.62704610699984,
+      "dt": 0.4327344819994323,
+      "tokens": 32,
+      "active": 32,
+      "step": 137
+    },
+    {
+      "t": 47.01699115300016,
+      "dt": 0.38994504600032087,
+      "tokens": 32,
+      "active": 32,
+      "step": 138
+    },
+    {
+      "t": 47.41949283200029,
+      "dt": 0.40250167900012457,
+      "tokens": 32,
+      "active": 32,
+      "step": 139
+    },
+    {
+      "t": 47.80127114700008,
+      "dt": 0.3817783149997922,
+      "tokens": 32,
+      "active": 32,
+      "step": 140
+    },
+    {
+      "t": 48.23000801299986,
+      "dt": 0.428736865999781,
+      "tokens": 32,
+      "active": 32,
+      "step": 141
+    },
+    {
+      "t": 48.698763106000115,
+      "dt": 0.4687550930002544,
+      "tokens": 32,
+      "active": 32,
+      "step": 142
+    },
+    {
+      "t": 49.04099760200006,
+      "dt": 0.3422344959999464,
+      "tokens": 32,
+      "active": 32,
+      "step": 143
+    },
+    {
+      "t": 49.328042516000096,
+      "dt": 0.2870449140000346,
+      "tokens": 32,
+      "active": 32,
+      "step": 144
+    },
+    {
+      "t": 49.62599489199965,
+      "dt": 0.29795237599955726,
+      "tokens": 32,
+      "active": 32,
+      "step": 145
+    },
+    {
+      "t": 49.91191936300038,
+      "dt": 0.28592447100072604,
+      "tokens": 32,
+      "active": 32,
+      "step": 146
+    },
+    {
+      "t": 50.20244333899973,
+      "dt": 0.2905239759993492,
+      "tokens": 32,
+      "active": 32,
+      "step": 147
+    },
+    {
+      "t": 50.50234792399988,
+      "dt": 0.2999045850001494,
+      "tokens": 32,
+      "active": 32,
+      "step": 148
+    },
+    {
+      "t": 50.787521985999774,
+      "dt": 0.28517406199989637,
+      "tokens": 32,
+      "active": 32,
+      "step": 149
+    },
+    {
+      "t": 51.08080484000038,
+      "dt": 0.2932828540006085,
+      "tokens": 32,
+      "active": 32,
+      "step": 150
+    },
+    {
+      "t": 51.363798319000125,
+      "dt": 0.28299347899974236,
+      "tokens": 32,
+      "active": 32,
+      "step": 151
+    },
+    {
+      "t": 51.661065870999664,
+      "dt": 0.29726755199953914,
+      "tokens": 32,
+      "active": 32,
+      "step": 152
+    },
+    {
+      "t": 51.95828532399992,
+      "dt": 0.29721945300025254,
+      "tokens": 32,
+      "active": 32,
+      "step": 153
+    },
+    {
+      "t": 52.255486523999934,
+      "dt": 0.2972012000000177,
+      "tokens": 32,
+      "active": 32,
+      "step": 154
+    },
+    {
+      "t": 52.559286961,
+      "dt": 0.30380043700006354,
+      "tokens": 32,
+      "active": 32,
+      "step": 155
+    },
+    {
+      "t": 52.84966667200024,
+      "dt": 0.2903797110002415,
+      "tokens": 32,
+      "active": 7,
+      "step": 156
+    },
+    {
+      "t": 53.95260044299994,
+      "dt": 1.102933770999698,
+      "tokens": 57,
+      "active": 29,
+      "step": 157
+    },
+    {
+      "t": 54.34472916899995,
+      "dt": 0.3921287260000099,
+      "tokens": 35,
+      "active": 32,
+      "step": 158
+    },
+    {
+      "t": 54.646340856999814,
+      "dt": 0.30161168799986626,
+      "tokens": 32,
+      "active": 32,
+      "step": 159
+    },
+    {
+      "t": 54.93463931699989,
+      "dt": 0.2882984600000782,
+      "tokens": 32,
+      "active": 32,
+      "step": 160
+    },
+    {
+      "t": 55.228766907000136,
+      "dt": 0.2941275900002438,
+      "tokens": 32,
+      "active": 32,
+      "step": 161
+    },
+    {
+      "t": 55.51945473100022,
+      "dt": 0.29068782400008786,
+      "tokens": 32,
+      "active": 32,
+      "step": 162
+    },
+    {
+      "t": 55.823125011999764,
+      "dt": 0.3036702809995404,
+      "tokens": 32,
+      "active": 32,
+      "step": 163
+    },
+    {
+      "t": 56.11435666699981,
+      "dt": 0.2912316550000469,
+      "tokens": 32,
+      "active": 32,
+      "step": 164
+    },
+    {
+      "t": 56.40434670400009,
+      "dt": 0.2899900370002797,
+      "tokens": 32,
+      "active": 32,
+      "step": 165
+    },
+    {
+      "t": 56.69885521099968,
+      "dt": 0.2945085069995912,
+      "tokens": 32,
+      "active": 32,
+      "step": 166
+    },
+    {
+      "t": 56.984017579000465,
+      "dt": 0.2851623680007833,
+      "tokens": 32,
+      "active": 32,
+      "step": 167
+    },
+    {
+      "t": 57.27824670500013,
+      "dt": 0.29422912599966367,
+      "tokens": 32,
+      "active": 32,
+      "step": 168
+    },
+    {
+      "t": 57.5659423799998,
+      "dt": 0.28769567499966797,
+      "tokens": 32,
+      "active": 32,
+      "step": 169
+    },
+    {
+      "t": 57.864438288999736,
+      "dt": 0.2984959089999393,
+      "tokens": 32,
+      "active": 32,
+      "step": 170
+    },
+    {
+      "t": 58.15325971400034,
+      "dt": 0.2888214250006058,
+      "tokens": 32,
+      "active": 32,
+      "step": 171
+    },
+    {
+      "t": 58.44228841899985,
+      "dt": 0.2890287049995095,
+      "tokens": 32,
+      "active": 32,
+      "step": 172
+    },
+    {
+      "t": 58.74159765500008,
+      "dt": 0.2993092360002265,
+      "tokens": 32,
+      "active": 32,
+      "step": 173
+    },
+    {
+      "t": 59.15386498600037,
+      "dt": 0.4122673310002938,
+      "tokens": 32,
+      "active": 32,
+      "step": 174
+    },
+    {
+      "t": 59.547322438000265,
+      "dt": 0.39345745199989324,
+      "tokens": 32,
+      "active": 32,
+      "step": 175
+    },
+    {
+      "t": 59.95459516899973,
+      "dt": 0.40727273099946615,
+      "tokens": 32,
+      "active": 32,
+      "step": 176
+    },
+    {
+      "t": 60.36040603800029,
+      "dt": 0.40581086900056107,
+      "tokens": 32,
+      "active": 32,
+      "step": 177
+    },
+    {
+      "t": 60.80383333500049,
+      "dt": 0.44342729700019845,
+      "tokens": 32,
+      "active": 32,
+      "step": 178
+    },
+    {
+      "t": 61.30096071299977,
+      "dt": 0.4971273779992771,
+      "tokens": 32,
+      "active": 32,
+      "step": 179
+    },
+    {
+      "t": 61.59690290100025,
+      "dt": 0.2959421880004811,
+      "tokens": 32,
+      "active": 32,
+      "step": 180
+    },
+    {
+      "t": 61.898469136999665,
+      "dt": 0.3015662359994167,
+      "tokens": 32,
+      "active": 32,
+      "step": 181
+    },
+    {
+      "t": 62.204009658999894,
+      "dt": 0.3055405220002285,
+      "tokens": 32,
+      "active": 32,
+      "step": 182
+    },
+    {
+      "t": 62.494620911999846,
+      "dt": 0.29061125299995183,
+      "tokens": 32,
+      "active": 32,
+      "step": 183
+    },
+    {
+      "t": 62.78248767700006,
+      "dt": 0.28786676500021713,
+      "tokens": 32,
+      "active": 32,
+      "step": 184
+    },
+    {
+      "t": 63.08551083600014,
+      "dt": 0.3030231590000767,
+      "tokens": 32,
+      "active": 32,
+      "step": 185
+    },
+    {
+      "t": 63.374289725999915,
+      "dt": 0.28877888999977586,
+      "tokens": 32,
+      "active": 32,
+      "step": 186
+    },
+    {
+      "t": 63.6579585999998,
+      "dt": 0.2836688739998863,
+      "tokens": 32,
+      "active": 28,
+      "step": 187
+    },
+    {
+      "t": 64.09716201799984,
+      "dt": 0.4392034180000337,
+      "tokens": 36,
+      "active": 32,
+      "step": 188
+    },
+    {
+      "t": 64.38962001100026,
+      "dt": 0.29245799300042563,
+      "tokens": 32,
+      "active": 32,
+      "step": 189
+    },
+    {
+      "t": 64.66996994100009,
+      "dt": 0.28034992999982933,
+      "tokens": 32,
+      "active": 32,
+      "step": 190
+    },
+    {
+      "t": 64.96379855099985,
+      "dt": 0.293828609999764,
+      "tokens": 32,
+      "active": 32,
+      "step": 191
+    },
+    {
+      "t": 65.25673996299975,
+      "dt": 0.292941411999891,
+      "tokens": 32,
+      "active": 32,
+      "step": 192
+    },
+    {
+      "t": 65.54101410000021,
+      "dt": 0.284274137000466,
+      "tokens": 32,
+      "active": 32,
+      "step": 193
+    },
+    {
+      "t": 65.8286495579996,
+      "dt": 0.28763545799938584,
+      "tokens": 32,
+      "active": 32,
+      "step": 194
+    },
+    {
+      "t": 66.13381612900048,
+      "dt": 0.30516657100088196,
+      "tokens": 32,
+      "active": 32,
+      "step": 195
+    },
+    {
+      "t": 66.43949474600049,
+      "dt": 0.3056786170000123,
+      "tokens": 32,
+      "active": 32,
+      "step": 196
+    },
+    {
+      "t": 66.73213537900028,
+      "dt": 0.2926406329997917,
+      "tokens": 32,
+      "active": 32,
+      "step": 197
+    },
+    {
+      "t": 67.04647105599997,
+      "dt": 0.3143356769996899,
+      "tokens": 32,
+      "active": 32,
+      "step": 198
+    },
+    {
+      "t": 67.33236576099989,
+      "dt": 0.28589470499991876,
+      "tokens": 32,
+      "active": 32,
+      "step": 199
+    },
+    {
+      "t": 67.61784191399965,
+      "dt": 0.28547615299976314,
+      "tokens": 32,
+      "active": 32,
+      "step": 200
+    },
+    {
+      "t": 67.90368058700005,
+      "dt": 0.28583867300039856,
+      "tokens": 32,
+      "active": 32,
+      "step": 201
+    },
+    {
+      "t": 68.20420473200011,
+      "dt": 0.300524145000054,
+      "tokens": 32,
+      "active": 32,
+      "step": 202
+    },
+    {
+      "t": 68.49431605399968,
+      "dt": 0.290111321999575,
+      "tokens": 32,
+      "active": 32,
+      "step": 203
+    },
+    {
+      "t": 68.77937164200011,
+      "dt": 0.2850555880004322,
+      "tokens": 32,
+      "active": 32,
+      "step": 204
+    },
+    {
+      "t": 69.08979126899976,
+      "dt": 0.3104196269996464,
+      "tokens": 32,
+      "active": 32,
+      "step": 205
+    },
+    {
+      "t": 69.37811602399961,
+      "dt": 0.28832475499984866,
+      "tokens": 32,
+      "active": 32,
+      "step": 206
+    },
+    {
+      "t": 69.66161481200015,
+      "dt": 0.28349878800054285,
+      "tokens": 32,
+      "active": 32,
+      "step": 207
+    },
+    {
+      "t": 69.94814081799996,
+      "dt": 0.2865260059998036,
+      "tokens": 32,
+      "active": 32,
+      "step": 208
+    },
+    {
+      "t": 70.2579488829997,
+      "dt": 0.3098080649997428,
+      "tokens": 32,
+      "active": 32,
+      "step": 209
+    },
+    {
+      "t": 70.54486623499997,
+      "dt": 0.28691735200027324,
+      "tokens": 32,
+      "active": 32,
+      "step": 210
+    },
+    {
+      "t": 70.83267267700012,
+      "dt": 0.2878064420001465,
+      "tokens": 32,
+      "active": 32,
+      "step": 211
+    },
+    {
+      "t": 71.13225364600021,
+      "dt": 0.2995809690000897,
+      "tokens": 32,
+      "active": 32,
+      "step": 212
+    },
+    {
+      "t": 71.4954541320003,
+      "dt": 0.36320048600009613,
+      "tokens": 32,
+      "active": 32,
+      "step": 213
+    },
+    {
+      "t": 71.90270191699983,
+      "dt": 0.40724778499952663,
+      "tokens": 32,
+      "active": 32,
+      "step": 214
+    },
+    {
+      "t": 72.3078465110002,
+      "dt": 0.40514459400037595,
+      "tokens": 32,
+      "active": 32,
+      "step": 215
+    },
+    {
+      "t": 72.70212726600039,
+      "dt": 0.39428075500018167,
+      "tokens": 32,
+      "active": 32,
+      "step": 216
+    },
+    {
+      "t": 73.12889496000025,
+      "dt": 0.4267676939998637,
+      "tokens": 32,
+      "active": 32,
+      "step": 217
+    },
+    {
+      "t": 73.553771805,
+      "dt": 0.4248768449997442,
+      "tokens": 32,
+      "active": 32,
+      "step": 218
+    },
+    {
+      "t": 73.97209260900036,
+      "dt": 0.4183208040003592,
+      "tokens": 32,
+      "active": 7,
+      "step": 219
+    },
+    {
+      "t": 75.05435097999998,
+      "dt": 1.0822583709996252,
+      "tokens": 57,
+      "active": 29,
+      "step": 220
+    },
+    {
+      "t": 75.43761458599965,
+      "dt": 0.383263605999673,
+      "tokens": 35,
+      "active": 32,
+      "step": 221
+    },
+    {
+      "t": 75.71749569700023,
+      "dt": 0.2798811110005772,
+      "tokens": 32,
+      "active": 32,
+      "step": 222
+    },
+    {
+      "t": 76.00228608500038,
+      "dt": 0.2847903880001468,
+      "tokens": 32,
+      "active": 32,
+      "step": 223
+    },
+    {
+      "t": 76.29786212900035,
+      "dt": 0.29557604399997217,
+      "tokens": 32,
+      "active": 32,
+      "step": 224
+    },
+    {
+      "t": 76.6310951229998,
+      "dt": 0.33323299399944517,
+      "tokens": 32,
+      "active": 32,
+      "step": 225
+    },
+    {
+      "t": 76.91935331500008,
+      "dt": 0.2882581920002849,
+      "tokens": 32,
+      "active": 32,
+      "step": 226
+    },
+    {
+      "t": 77.20760453900039,
+      "dt": 0.28825122400030523,
+      "tokens": 32,
+      "active": 32,
+      "step": 227
+    },
+    {
+      "t": 77.50679913899967,
+      "dt": 0.2991945999992822,
+      "tokens": 32,
+      "active": 32,
+      "step": 228
+    },
+    {
+      "t": 77.78930386000047,
+      "dt": 0.28250472100080515,
+      "tokens": 32,
+      "active": 32,
+      "step": 229
+    },
+    {
+      "t": 78.08135732499977,
+      "dt": 0.29205346499929874,
+      "tokens": 32,
+      "active": 32,
+      "step": 230
+    },
+    {
+      "t": 78.36505516000034,
+      "dt": 0.28369783500056656,
+      "tokens": 32,
+      "active": 32,
+      "step": 231
+    },
+    {
+      "t": 78.66216933299984,
+      "dt": 0.2971141729994997,
+      "tokens": 32,
+      "active": 32,
+      "step": 232
+    },
+    {
+      "t": 78.94639677400028,
+      "dt": 0.2842274410004393,
+      "tokens": 32,
+      "active": 32,
+      "step": 233
+    },
+    {
+      "t": 79.23446970500027,
+      "dt": 0.2880729309999879,
+      "tokens": 32,
+      "active": 32,
+      "step": 234
+    },
+    {
+      "t": 79.53451011699963,
+      "dt": 0.3000404119993618,
+      "tokens": 32,
+      "active": 32,
+      "step": 235
+    },
+    {
+      "t": 79.8158432070004,
+      "dt": 0.28133309000077134,
+      "tokens": 32,
+      "active": 32,
+      "step": 236
+    },
+    {
+      "t": 80.11155717099973,
+      "dt": 0.2957139639993329,
+      "tokens": 32,
+      "active": 32,
+      "step": 237
+    },
+    {
+      "t": 80.39803917500012,
+      "dt": 0.2864820040003906,
+      "tokens": 32,
+      "active": 32,
+      "step": 238
+    },
+    {
+      "t": 80.69715329599967,
+      "dt": 0.2991141209995476,
+      "tokens": 32,
+      "active": 32,
+      "step": 239
+    },
+    {
+      "t": 80.9838146789998,
+      "dt": 0.286661383000137,
+      "tokens": 32,
+      "active": 32,
+      "step": 240
+    },
+    {
+      "t": 81.27546903100028,
+      "dt": 0.29165435200047796,
+      "tokens": 32,
+      "active": 32,
+      "step": 241
+    },
+    {
+      "t": 81.56963876099962,
+      "dt": 0.2941697299993393,
+      "tokens": 32,
+      "active": 32,
+      "step": 242
+    },
+    {
+      "t": 81.85023528399961,
+      "dt": 0.2805965229999856,
+      "tokens": 32,
+      "active": 32,
+      "step": 243
+    },
+    {
+      "t": 82.14604246999988,
+      "dt": 0.29580718600027467,
+      "tokens": 32,
+      "active": 32,
+      "step": 244
+    },
+    {
+      "t": 82.43134013600047,
+      "dt": 0.2852976660005879,
+      "tokens": 32,
+      "active": 32,
+      "step": 245
+    },
+    {
+      "t": 82.74609510800019,
+      "dt": 0.3147549719997187,
+      "tokens": 32,
+      "active": 32,
+      "step": 246
+    },
+    {
+      "t": 83.04322199299986,
+      "dt": 0.29712688499967044,
+      "tokens": 32,
+      "active": 32,
+      "step": 247
+    },
+    {
+      "t": 83.32938716599983,
+      "dt": 0.28616517299997213,
+      "tokens": 32,
+      "active": 32,
+      "step": 248
+    },
+    {
+      "t": 83.62590771499981,
+      "dt": 0.29652054899997893,
+      "tokens": 32,
+      "active": 32,
+      "step": 249
+    },
+    {
+      "t": 83.92801712999972,
+      "dt": 0.3021094149999044,
+      "tokens": 32,
+      "active": 28,
+      "step": 250
+    },
+    {
+      "t": 84.5253989390003,
+      "dt": 0.5973818090005807,
+      "tokens": 36,
+      "active": 32,
+      "step": 251
+    },
+    {
+      "t": 84.92562277500019,
+      "dt": 0.4002238359998955,
+      "tokens": 32,
+      "active": 32,
+      "step": 252
+    },
+    {
+      "t": 85.31191220500023,
+      "dt": 0.38628943000003346,
+      "tokens": 32,
+      "active": 32,
+      "step": 253
+    },
+    {
+      "t": 85.75495143900025,
+      "dt": 0.4430392340000253,
+      "tokens": 32,
+      "active": 32,
+      "step": 254
+    },
+    {
+      "t": 86.1807559380004,
+      "dt": 0.4258044990001508,
+      "tokens": 32,
+      "active": 32,
+      "step": 255
+    },
+    {
+      "t": 86.56659223899987,
+      "dt": 0.38583630099947186,
+      "tokens": 32,
+      "active": 32,
+      "step": 256
+    },
+    {
+      "t": 86.86441388000003,
+      "dt": 0.29782164100015507,
+      "tokens": 32,
+      "active": 32,
+      "step": 257
+    },
+    {
+      "t": 87.15619251699991,
+      "dt": 0.2917786369998794,
+      "tokens": 32,
+      "active": 32,
+      "step": 258
+    },
+    {
+      "t": 87.43575498500013,
+      "dt": 0.279562468000222,
+      "tokens": 32,
+      "active": 32,
+      "step": 259
+    },
+    {
+      "t": 87.71381558699977,
+      "dt": 0.2780606019996412,
+      "tokens": 32,
+      "active": 32,
+      "step": 260
+    },
+    {
+      "t": 88.01059665100001,
+      "dt": 0.2967810640002426,
+      "tokens": 32,
+      "active": 32,
+      "step": 261
+    },
+    {
+      "t": 88.29744209100045,
+      "dt": 0.2868454400004339,
+      "tokens": 32,
+      "active": 32,
+      "step": 262
+    },
+    {
+      "t": 88.5757987119996,
+      "dt": 0.2783566209991477,
+      "tokens": 32,
+      "active": 32,
+      "step": 263
+    },
+    {
+      "t": 88.87048510299974,
+      "dt": 0.29468639100014116,
+      "tokens": 32,
+      "active": 32,
+      "step": 264
+    },
+    {
+      "t": 89.1655601450002,
+      "dt": 0.2950750420004624,
+      "tokens": 32,
+      "active": 32,
+      "step": 265
+    },
+    {
+      "t": 89.45051973400041,
+      "dt": 0.28495958900020923,
+      "tokens": 32,
+      "active": 32,
+      "step": 266
+    },
+    {
+      "t": 89.73475529300049,
+      "dt": 0.2842355590000807,
+      "tokens": 32,
+      "active": 32,
+      "step": 267
+    },
+    {
+      "t": 90.04273226100031,
+      "dt": 0.30797696799982077,
+      "tokens": 32,
+      "active": 32,
+      "step": 268
+    },
+    {
+      "t": 90.33412733299974,
+      "dt": 0.2913950719994318,
+      "tokens": 32,
+      "active": 32,
+      "step": 269
+    },
+    {
+      "t": 90.6270678259998,
+      "dt": 0.2929404930000601,
+      "tokens": 32,
+      "active": 32,
+      "step": 270
+    },
+    {
+      "t": 90.92984529600017,
+      "dt": 0.3027774700003647,
+      "tokens": 32,
+      "active": 32,
+      "step": 271
+    },
+    {
+      "t": 91.2295519270001,
+      "dt": 0.29970663099993544,
+      "tokens": 32,
+      "active": 32,
+      "step": 272
+    },
+    {
+      "t": 91.52456269600043,
+      "dt": 0.29501076900032785,
+      "tokens": 32,
+      "active": 32,
+      "step": 273
+    },
+    {
+      "t": 91.81214787000044,
+      "dt": 0.2875851740000144,
+      "tokens": 32,
+      "active": 32,
+      "step": 274
+    },
+    {
+      "t": 92.1227595119999,
+      "dt": 0.3106116419994578,
+      "tokens": 32,
+      "active": 32,
+      "step": 275
+    },
+    {
+      "t": 92.40295014200001,
+      "dt": 0.28019063000010647,
+      "tokens": 32,
+      "active": 32,
+      "step": 276
+    },
+    {
+      "t": 92.68590387699987,
+      "dt": 0.28295373499986454,
+      "tokens": 32,
+      "active": 32,
+      "step": 277
+    },
+    {
+      "t": 92.99503784700028,
+      "dt": 0.30913397000040277,
+      "tokens": 32,
+      "active": 32,
+      "step": 278
+    },
+    {
+      "t": 93.28190978099974,
+      "dt": 0.2868719339994641,
+      "tokens": 32,
+      "active": 32,
+      "step": 279
+    },
+    {
+      "t": 93.56757234500037,
+      "dt": 0.2856625640006314,
+      "tokens": 32,
+      "active": 32,
+      "step": 280
+    },
+    {
+      "t": 93.84795444100018,
+      "dt": 0.280382095999812,
+      "tokens": 32,
+      "active": 32,
+      "step": 281
+    },
+    {
+      "t": 94.14880475399968,
+      "dt": 0.3008503129995006,
+      "tokens": 32,
+      "active": 7,
+      "step": 282
+    },
+    {
+      "t": 94.38895418900029,
+      "dt": 0.24014943500060326,
+      "tokens": 15,
+      "active": 8,
+      "step": 283
+    },
+    {
+      "t": 94.47730416299964,
+      "dt": 0.08834997399935673,
+      "tokens": 8,
+      "active": 8,
+      "step": 284
+    },
+    {
+      "t": 94.56436857100016,
+      "dt": 0.08706440800051496,
+      "tokens": 8,
+      "active": 8,
+      "step": 285
+    },
+    {
+      "t": 94.65052243700029,
+      "dt": 0.08615386600013153,
+      "tokens": 8,
+      "active": 8,
+      "step": 286
+    },
+    {
+      "t": 94.73750923300031,
+      "dt": 0.08698679600001924,
+      "tokens": 8,
+      "active": 8,
+      "step": 287
+    },
+    {
+      "t": 94.82373676600037,
+      "dt": 0.0862275330000557,
+      "tokens": 8,
+      "active": 8,
+      "step": 288
+    },
+    {
+      "t": 94.9106590170004,
+      "dt": 0.0869222510000327,
+      "tokens": 8,
+      "active": 8,
+      "step": 289
+    },
+    {
+      "t": 94.99881905999973,
+      "dt": 0.08816004299933411,
+      "tokens": 8,
+      "active": 8,
+      "step": 290
+    },
+    {
+      "t": 95.1026846349996,
+      "dt": 0.10386557499987248,
+      "tokens": 8,
+      "active": 8,
+      "step": 291
+    },
+    {
+      "t": 95.189658925,
+      "dt": 0.08697429000039847,
+      "tokens": 8,
+      "active": 8,
+      "step": 292
+    },
+    {
+      "t": 95.27680803099975,
+      "dt": 0.08714910599974246,
+      "tokens": 8,
+      "active": 8,
+      "step": 293
+    },
+    {
+      "t": 95.36406558999988,
+      "dt": 0.0872575590001361,
+      "tokens": 8,
+      "active": 8,
+      "step": 294
+    },
+    {
+      "t": 95.45148163500016,
+      "dt": 0.08741604500028188,
+      "tokens": 8,
+      "active": 8,
+      "step": 295
+    },
+    {
+      "t": 95.54073909300041,
+      "dt": 0.08925745800024742,
+      "tokens": 8,
+      "active": 8,
+      "step": 296
+    },
+    {
+      "t": 95.62928760399973,
+      "dt": 0.08854851099931693,
+      "tokens": 8,
+      "active": 8,
+      "step": 297
+    },
+    {
+      "t": 95.71667676099969,
+      "dt": 0.08738915699996141,
+      "tokens": 8,
+      "active": 8,
+      "step": 298
+    },
+    {
+      "t": 95.80456256799971,
+      "dt": 0.08788580700002058,
+      "tokens": 8,
+      "active": 8,
+      "step": 299
+    },
+    {
+      "t": 95.89327988100013,
+      "dt": 0.08871731300041574,
+      "tokens": 8,
+      "active": 8,
+      "step": 300
+    },
+    {
+      "t": 95.98421546099962,
+      "dt": 0.09093557999949553,
+      "tokens": 8,
+      "active": 8,
+      "step": 301
+    },
+    {
+      "t": 96.09234131100038,
+      "dt": 0.10812585000076069,
+      "tokens": 8,
+      "active": 8,
+      "step": 302
+    },
+    {
+      "t": 96.18129652799962,
+      "dt": 0.08895521699923847,
+      "tokens": 8,
+      "active": 8,
+      "step": 303
+    },
+    {
+      "t": 96.27079324500028,
+      "dt": 0.08949671700065664,
+      "tokens": 8,
+      "active": 8,
+      "step": 304
+    },
+    {
+      "t": 96.35995181399994,
+      "dt": 0.08915856899966457,
+      "tokens": 8,
+      "active": 8,
+      "step": 305
+    },
+    {
+      "t": 96.44766218899986,
+      "dt": 0.08771037499991508,
+      "tokens": 8,
+      "active": 8,
+      "step": 306
+    },
+    {
+      "t": 96.59537288699994,
+      "dt": 0.14771069800008263,
+      "tokens": 8,
+      "active": 8,
+      "step": 307
+    },
+    {
+      "t": 96.72141723100049,
+      "dt": 0.12604434400054743,
+      "tokens": 8,
+      "active": 8,
+      "step": 308
+    },
+    {
+      "t": 96.84483872700002,
+      "dt": 0.123421495999537,
+      "tokens": 8,
+      "active": 8,
+      "step": 309
+    },
+    {
+      "t": 96.97132511400014,
+      "dt": 0.1264863870001136,
+      "tokens": 8,
+      "active": 8,
+      "step": 310
+    },
+    {
+      "t": 97.10725851500047,
+      "dt": 0.13593340100032947,
+      "tokens": 8,
+      "active": 8,
+      "step": 311
+    },
+    {
+      "t": 97.23634359599964,
+      "dt": 0.12908508099917526,
+      "tokens": 8,
+      "active": 8,
+      "step": 312
+    },
+    {
+      "t": 97.35858105999978,
+      "dt": 0.12223746400013624,
+      "tokens": 8,
+      "active": 4,
+      "step": 313
+    },
+    {
+      "t": 97.43068844800018,
+      "dt": 0.07210738800040417,
+      "tokens": 4,
+      "active": 4,
+      "step": 314
+    },
+    {
+      "t": 97.50391141799992,
+      "dt": 0.07322296999973332,
+      "tokens": 4,
+      "active": 4,
+      "step": 315
+    },
+    {
+      "t": 97.57682154699978,
+      "dt": 0.07291012899986526,
+      "tokens": 4,
+      "active": 4,
+      "step": 316
+    },
+    {
+      "t": 97.64907301099993,
+      "dt": 0.07225146400014637,
+      "tokens": 4,
+      "active": 4,
+      "step": 317
+    },
+    {
+      "t": 97.72262202399997,
+      "dt": 0.07354901300004713,
+      "tokens": 4,
+      "active": 4,
+      "step": 318
+    },
+    {
+      "t": 97.7946244800005,
+      "dt": 0.07200245600051858,
+      "tokens": 4,
+      "active": 4,
+      "step": 319
+    },
+    {
+      "t": 97.867066754,
+      "dt": 0.07244227399951342,
+      "tokens": 4,
+      "active": 4,
+      "step": 320
+    },
+    {
+      "t": 97.94087871099964,
+      "dt": 0.07381195699963428,
+      "tokens": 4,
+      "active": 4,
+      "step": 321
+    },
+    {
+      "t": 98.03299759899983,
+      "dt": 0.09211888800018642,
+      "tokens": 4,
+      "active": 4,
+      "step": 322
+    },
+    {
+      "t": 98.12073493299977,
+      "dt": 0.08773733399993944,
+      "tokens": 4,
+      "active": 4,
+      "step": 323
+    },
+    {
+      "t": 98.22416718899967,
+      "dt": 0.10343225599990546,
+      "tokens": 4,
+      "active": 4,
+      "step": 324
+    },
+    {
+      "t": 98.29884871800004,
+      "dt": 0.07468152900037239,
+      "tokens": 4,
+      "active": 4,
+      "step": 325
+    },
+    {
+      "t": 98.37814987900038,
+      "dt": 0.07930116100033047,
+      "tokens": 4,
+      "active": 4,
+      "step": 326
+    },
+    {
+      "t": 98.45083513999998,
+      "dt": 0.07268526099960582,
+      "tokens": 4,
+      "active": 4,
+      "step": 327
+    },
+    {
+      "t": 98.52836172000025,
+      "dt": 0.07752658000026713,
+      "tokens": 4,
+      "active": 4,
+      "step": 328
+    },
+    {
+      "t": 98.61873278100029,
+      "dt": 0.09037106100004166,
+      "tokens": 4,
+      "active": 4,
+      "step": 329
+    },
+    {
+      "t": 98.70935246200042,
+      "dt": 0.09061968100013473,
+      "tokens": 4,
+      "active": 4,
+      "step": 330
+    },
+    {
+      "t": 98.7982503989997,
+      "dt": 0.08889793699927395,
+      "tokens": 4,
+      "active": 4,
+      "step": 331
+    },
+    {
+      "t": 98.88804428900039,
+      "dt": 0.08979389000069204,
+      "tokens": 4,
+      "active": 4,
+      "step": 332
+    },
+    {
+      "t": 98.96715356300047,
+      "dt": 0.07910927400007495,
+      "tokens": 4,
+      "active": 4,
+      "step": 333
+    },
+    {
+      "t": 99.02657088999968,
+      "dt": 0.05941732699920976,
+      "tokens": 4,
+      "active": 4,
+      "step": 334
+    },
+    {
+      "t": 99.08485329799987,
+      "dt": 0.058282408000195574,
+      "tokens": 4,
+      "active": 4,
+      "step": 335
+    },
+    {
+      "t": 99.14007859100002,
+      "dt": 0.05522529300014867,
+      "tokens": 4,
+      "active": 4,
+      "step": 336
+    },
+    {
+      "t": 99.19449925499976,
+      "dt": 0.05442066399973555,
+      "tokens": 4,
+      "active": 4,
+      "step": 337
+    },
+    {
+      "t": 99.26304219800022,
+      "dt": 0.06854294300046604,
+      "tokens": 4,
+      "active": 4,
+      "step": 338
+    },
+    {
+      "t": 99.31990089099963,
+      "dt": 0.0568586929994126,
+      "tokens": 4,
+      "active": 4,
+      "step": 339
+    },
+    {
+      "t": 99.37504408099994,
+      "dt": 0.055143190000308095,
+      "tokens": 4,
+      "active": 4,
+      "step": 340
+    },
+    {
+      "t": 99.42956585000047,
+      "dt": 0.054521769000530185,
+      "tokens": 4,
+      "active": 4,
+      "step": 341
+    },
+    {
+      "t": 99.4848277279998,
+      "dt": 0.055261877999328135,
+      "tokens": 4,
+      "active": 4,
+      "step": 342
+    },
+    {
+      "t": 99.53953944099976,
+      "dt": 0.05471171299996058,
+      "tokens": 4,
+      "active": 4,
+      "step": 343
+    },
+    {
+      "t": 99.59441499700006,
+      "dt": 0.054875556000297365,
+      "tokens": 4,
+      "active": 4,
+      "step": 344
+    },
+    {
+      "t": 99.64936868200039,
+      "dt": 0.05495368500032782,
+      "tokens": 4,
+      "active": 0,
+      "step": 345
+    }
+  ],
+  "shift_t": 20.892238786000235,
+  "shift_step": 62,
+  "cycles": null,
+  "reward_gate": null,
+  "reward_validity": null,
+  "n_valid_rewards": null,
+  "n_withheld_rewards": null,
+  "mean_valid_cycle_utility": null,
+  "decisions": null,
+  "arm_changes": null,
+  "arm_change_rate": null,
+  "arm_histogram": null,
+  "convergence": null,
+  "controller_stats": null,
+  "decision_us": []
+}
